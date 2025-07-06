@@ -579,42 +579,90 @@ def update_or_create():
 
 
 
-# --- 12. Загрузка wanted_list ---
-def parse_xml_and_query(xml_file_path):
-    with open(xml_file_path, 'r', encoding='utf-8') as file:
-        xml_content = file.read()
+# --- 12. presigned_url ---
+from google.cloud import storage
 
-    soup = BeautifulSoup(xml_content, 'xml')
-    items = soup.find_all('ITEM')
 
-    for item in items:
-        item_id_text = item.find('ITEMID').text
-        item_type = item.find('ITEMTYPE').text
-        color = item.find('COLOR').text
-        max_price_text = item.find('MAXPRICE').text
-        min_qty_text = item.find('MINQTY').text
-        condition = item.find('CONDITION').text
-        notify = item.find('NOTIFY').text
+# Инициализация клиента GCS
+storage_client = storage.Client()  # Предполагается, что настроены переменные окружения или сервисный аккаунт
 
-        # Преобразуем числовые значения
-        try:
-            item_id = int(item_id_text)
-            max_price = float(max_price_text)
-            min_qty = int(min_qty_text)
-        except (ValueError, AttributeError):
-            print(f"Некорректные данные для ITEMID={item_id_text}")
-            continue
+# Название вашего бакета
+BUCKET_NAME = 'ваш_имя_бакета'
 
-        # Выполняем поиск в базе по ITEMID
-        existing_item = CatalogItem.query.filter_by(id=item_id).first()
+@app.route('/presigned_url', methods=['POST'])
+def presigned_url():
+    data = request.get_json()
+    if not data or 'file_name' not in data:
+        abort(400, description="Missing 'file_name' in request data")
+    
+    file_name = data['file_name']
+    try:
+        bucket = storage_client.bucket(BUCKET_NAME)
+        blob = bucket.blob(file_name)
 
-        if existing_item:
-            print(f"Найден товар: {existing_item}")            
-        else:
-            print(f"Товар с ITEMID={item_id} не найден в базе.")
+        # Генерация предподписанного URL для загрузки (PUT)
+        url = blob.generate_signed_url(
+            version='v4',
+            expiration=3600,  # Время действия URL в секундах
+            method='PUT'
+        )
 
-# вызов функции с путем к вашему XML файлу
-# parse_xml_and_query('./proba.xml')
+        return jsonify({'url': url})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    
+    
+    
+# --- 13. Загрузка wanted_list ---
+def parse_xml_from_gcs(file_name):
+    try:
+        bucket = storage_client.bucket(BUCKET_NAME)
+        blob = bucket.blob(file_name)
+
+        # Проверка существования файла
+        if not blob.exists():
+            print(f"Файл {file_name} не найден в бакете {BUCKET_NAME}.")
+            return
+
+        # Получение содержимого файла как байтов
+        xml_bytes = blob.download_as_bytes()
+
+        # Декодируем байты в строку
+        xml_content = xml_bytes.decode('utf-8')
+
+        # Парсим XML из строки
+        soup = BeautifulSoup(xml_content, 'xml')
+        items = soup.find_all('ITEM')
+
+        for item in items:
+            item_id_text = item.find('ITEMID').text
+            item_type = item.find('ITEMTYPE').text
+            color = item.find('COLOR').text
+            max_price_text = item.find('MAXPRICE').text
+            min_qty_text = item.find('MINQTY').text
+            condition = item.find('CONDITION').text
+            notify = item.find('NOTIFY').text
+
+            # Преобразуем числовые значения
+            try:
+                item_id = int(item_id_text)
+                max_price = float(max_price_text)
+                min_qty = int(min_qty_text)
+            except (ValueError, AttributeError):
+                print(f"Некорректные данные для ITEMID={item_id_text}")
+                continue
+
+            existing_item = CatalogItem.query.filter_by(id=item_id).first()
+
+            if existing_item:
+                print(f"Найден товар: {existing_item}")            
+            else:
+                print(f"Товар с ITEMID={item_id} не найден в базе.")
+    except Exception as e:
+        print(f"Ошибка при получении файла из GCS: {e}")
+
+# вызов функции с именем файла в GCS
+# parse_xml_from_gcs('путь/к/вашему.xml')?????
 
 
 
