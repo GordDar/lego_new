@@ -105,8 +105,8 @@ from email.mime.multipart import MIMEMultipart
 # ?????
 SMTP_SERVER = 'smtp.yandex.ru'
 SMTP_PORT = 587
-EMAIL_ADDRESS = 'your_email@yandex.ru'  # ваш email
-EMAIL_PASSWORD = 'your_password' # ваш пароль
+EMAIL_ADDRESS = 'legostorage@yandex.ru'  # ваш email
+EMAIL_PASSWORD = 'lego_storage_password' # ваш пароль
 
 # Данные на почту
 def send_order_email(order, order_details):
@@ -515,23 +515,29 @@ def get_or_create(session: Session, model, defaults=None, **kwargs):
             return session.query(model).filter_by(**kwargs).first(), False
         
         
-def get_image_url(lot_id):
-    return f"https://img.bricklink.com/ItemImage/PN/6/{lot_id}.png"
+from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from webdriver_manager.chrome import ChromeDriverManager
 
-  
-  
-  # ТАКОЕ??      
-# def get_image_url(lot_id):
-#     # URL страницы детали на BrickLink
-#     page_url = f"https://www.bricklink.com/v2/catalog/catalogitem.page?P={lot_id}"
-#     response = requests.get(page_url)
-#     if response.status_code != 200:
-#         return None
-#     soup = BeautifulSoup(response.text, 'html.parser')
-#     img_tag = soup.find('img', {'id': 'itemImage'})
-#     if img_tag:
-#         return img_tag['src']
-#     return None
+def get_image_src_with_selenium(lot_id):
+    url = f'https://www.bricklink.com/v2/catalog/catalogitem.page?P={lot_id}'
+    options = webdriver.ChromeOptions()
+    options.add_argument('--headless')  # запуск без графического интерфейса
+    
+    # Используем ChromeDriverManager для автоматической установки драйвера
+    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
+    
+    try:
+        driver.get(url)
+        wait = WebDriverWait(driver, 10)
+        img = wait.until(EC.presence_of_element_located((By.ID, '_idImageMain')))
+        src = img.get_attribute('src')
+        return src
+    finally:
+        driver.quit()
 
 
 
@@ -551,7 +557,7 @@ def db_add():
         
         
         lot_id = row['Lot ID'].strip()
-        image_url = get_image_url(lot_id)
+        image_url = get_image_src_with_selenium(lot_id)
 
         for row in rows:
             # Создаем объект CatalogItem
@@ -665,7 +671,7 @@ def update_or_create():
             description=data.get('description'),
             price=data.get('price'),
             quantity=data.get('quantity'),
-            url=data.get('url'),
+            url=data.get('url') if data else get_image_src_with_selenium(lot_id),
             category_id=category_obj.id if category_obj else None,
             remarks = data.get('remarks')
         )
