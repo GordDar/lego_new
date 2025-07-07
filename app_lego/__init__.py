@@ -10,7 +10,6 @@ from datetime import datetime
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-# import requests
 from bs4 import BeautifulSoup
 
 app = Flask(__name__)
@@ -78,37 +77,77 @@ def get_catalog():
     })
 
 # --- 2. Отправка корзины (POST /cart) ---
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+
+# ?????
+SMTP_SERVER = 'smtp.yandex.ru'
+SMTP_PORT = 587
+EMAIL_ADDRESS = 'your_email@yandex.ru'  # ваш email
+EMAIL_PASSWORD = 'your_password' # ваш пароль
+
+# Данные на почту
+def send_order_email(order, order_details):
+    subject = f"Новый заказ #{order.id}"
+    to_email = 'oldi2008@yandex.ru'
+    
+    # Формируем тело письма
+    body = f"Новый заказ №{order.id}\n"
+    body += f"Дата: {order.created_at}\n"
+    body += f"Клиент: {order.customer_name}\n"
+    body += f"Телефон: {order.customer_telephone}\n"
+    body += f"Доставка: {'Да' if order.dostavka else 'Нет'}\n"
+    body += f"Время создания заказа: {order.created_at}\n"
+    body += f"Общая сумма: {order.total_price}\n\n"
+    body += "Позиции заказа:\n"
+    
+    for item in order_details:
+        body += (
+            f"- {item['description']} | "
+            f"Количество: {item['quantity_in_order']} | "
+            f"Цена за единицу: {item['unit_price']} | "
+            f"Итого: {item['total_price']}\n"
+        )
+    
+    # Создаем сообщение
+    msg = MIMEText(body, 'plain', 'utf-8')
+    msg['Subject'] = subject
+    msg['From'] = EMAIL_ADDRESS
+    msg['To'] = to_email
+    
+    # Отправка письма через SMTP
+    try:
+        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+            server.starttls()
+            server.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
+            server.send_message(msg)
+        print("Email успешно отправлен")
+    except Exception as e:
+        print(f"Ошибка при отправке email: {e}")
+
+
+
 @app.route('/cart', methods=['POST'])
 def submit_cart():
     data = request.json
-    # Ожидается структура:
-    # {
-    #   "items": [{"id": 1, "quantity": 2}, ...],
-    #   "customer_name": "...",
-    #   "customer_telephone": "...",
-    #   "dostavka": true/false,
-    #   "total_price": ...
-    # }
-    
     items_data = data.get('items')
     customer_name = data.get('customer_name')
     customer_telephone = data.get('customer_telephone')
     dostavka = data.get('dostavka', False)
     total_price = data.get('total_price')
-    
 
     if not items_data or not customer_name or not customer_telephone or total_price is None:
         return jsonify({'error': 'Missing required fields'}), 400
     
-    # проверки минимальной суммы заказа
-    settings = Settings.query.first()
-    if settings and settings.min_order_amount is not None:
-        if total_price < settings.min_order_amount:
+    # Проверка минимальной суммы заказа (по вашему условию)
+    settings = Settings.query.filter_by(settings_name='min').first()
+    if settings and settings.settings_value is not None:
+        if total_price < settings.settings_value:
             return jsonify({
-                'error': f'Минимальная сумма заказа составляет {settings.min_order_amount}. '
+                'error': f'Минимальная сумма заказа составляет {settings.settings_value}. '
                          f'Ваш заказ на сумму {total_price} не может быть принят.'
             }), 400
-
 
     order = Order(
         customer_name=customer_name,
@@ -116,6 +155,8 @@ def submit_cart():
         dostavka=dostavka,
         total_price=total_price
     )
+
+    order_details_for_email = []
 
     for item in items_data:
         catalog_item_id = item['id']
@@ -136,13 +177,28 @@ def submit_cart():
         )
         order.order_items.append(order_item)
 
-        # Обновляем количество на складе после подтверждения заказа
+        # Обновляем количество на складе
         catalog_item.quantity -= quantity_requested
-    
+
+        # Собираем данные для email
+        order_details_for_email.append({
+            'description': catalog_item.description,
+            'quantity_in_order': quantity_requested,
+            'unit_price': getattr(catalog_item, 'price', 0),
+            'total_price': getattr(catalog_item, 'price', 0) * quantity_requested
+        })
+
     db.session.add(order)
     db.session.commit()
 
+    # Устанавливаем время создания (если не установлено по умолчанию)
+    # и вызываем функцию отправки письма
+    send_order_email(order, order_details_for_email)
+
     return jsonify({'message': 'Order created', 'order_id': order.id})
+
+
+
 
 # --- 3. Логин для админки (POST /admin/login) ---
 @app.route('/admin/login', methods=['POST'])
@@ -163,7 +219,7 @@ def admin_login():
 @login_required
 def get_orders():
     status_filter = request.args.get('status')  # например, 'new', 'completed'
-    date_from = request.args.get('date_from')   # формат: 'YYYY-MM-DD'
+    date_from = request.args.get('created_at')   # формат: 'YYYY-MM-DD'
     date_to = request.args.get('date_to')  
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 20, type=int)
@@ -194,13 +250,11 @@ def get_orders():
     
     for order in orders_query:
         items_list = []
-        total_price_order = 0  # Инициализация суммы заказа
+        total_price_order = 0
         
         for item in order.items:
             catalog_item = item.catalog_item
-            price_per_unit = getattr(catalog_item, 'price', 0) 
-            
-            # Расчет стоимости позиции
+            price_per_unit = getattr(catalog_item, 'price', 0)
             item_total = price_per_unit * item.quantity
             total_price_order += item_total
             
@@ -216,23 +270,19 @@ def get_orders():
                 'remarks': getattr(item, 'remarks', None)
             })
         
-        
-        order_total_price = total_price_order
-        
-        remarks_value = getattr(order, 'remarks', None)
-        
         orders_list.append({
             'id': order.id,
             'customer_name': order.customer_name,
             'customer_telephone': order.customer_telephone,
             'dostavka': order.dostavka,
-            'total_price': order_total_price,
+            'total_price': total_price_order,
+            'status': order.status,  # добавлено
+            'created_at': order.created_at.isoformat(),  # добавлено
             'items': items_list,
-            'remarks': remarks_value
+            'remarks': getattr(order, 'remarks', None)
         })
-    
-    
-    
+        
+       
     
     pagination = orders_query.paginate(page=page, per_page=per_page, error_out=False)
 
@@ -242,6 +292,28 @@ def get_orders():
         'pages': pagination.pages,
         'current_page': pagination.page
     })
+    
+    
+# --- 4.1. Удаление выполненных заказов в админке (DELETE /admin/orders/{order_id}) --- 
+@app.route('/admin/orders/<int:order_id>', methods=['DELETE'])
+@login_required
+def delete_order(order_id):
+    # Ищем заказ по ID
+    order = Order.query.get(order_id)
+    if not order:
+        return jsonify({'error': 'Order not found'}), 404
+
+    # Проверяем статус заказа
+    if order.status != 'исполнен':
+        return jsonify({'error': 'Only completed orders can be deleted'}), 400
+
+    try:
+        db.session.delete(order)
+        db.session.commit()
+        return jsonify({'message': f'Order {order_id} has been deleted'}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': 'Failed to delete order', 'details': str(e)}), 500
 
 
 # --- 5. Установка курса валют в админке (POST /admin/set_currency) ---

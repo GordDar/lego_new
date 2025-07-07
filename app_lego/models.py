@@ -19,6 +19,8 @@ class Order(db.Model):
     customer_telephone = db.Column(db.String(50))
     dostavka = db.Column(db.Boolean, default=False)
     total_price = db.Column(db.Float)
+    status = db.Column(db.String(20), default='не исполнен')  # добавляем статус
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     # Связь с OrderItem
     order_items = db.relationship(

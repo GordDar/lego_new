@@ -72,7 +72,10 @@ def get_image_src_with_selenium(lot_id):
     finally:
         driver.quit()
 
-# Используйте функцию с нужным lot_id
+
+
+
+
 lot_id = '57562pb01'
 image_url = get_image_src_with_selenium(lot_id)
 print(f"Главное изображение для {lot_id}: {image_url}")
