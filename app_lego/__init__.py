@@ -82,6 +82,7 @@ def get_catalog():
 
     pagination = query.paginate(page=page, per_page=per_page, error_out=False)
     items = [{
+        'id': item.id,
         'lot_id': item.lot_id,
         'url': item.url,
         'color': item.color,
@@ -146,8 +147,6 @@ def send_order_email(order, order_details):
         print("Email успешно отправлен")
     except Exception as e:
         print(f"Ошибка при отправке email: {e}")
-
-
 
 @app.route('/cart', methods=['POST'])
 def submit_cart():
@@ -218,9 +217,6 @@ def submit_cart():
 
     return jsonify({'message': 'Order created', 'order_id': order.id})
 
-
-
-
 # --- 3. Логин для админки (POST /admin/login) ---
 @app.route('/admin/login', methods=['POST'])
 def admin_login():
@@ -230,8 +226,7 @@ def admin_login():
 
     user = AdminUser.query.filter_by(username=username).first()
     if user and check_password_hash(user.password_hash, password):
-        login_user(user)
-        return jsonify({'message': 'Logged in'})
+        return jsonify({'access_token': os.getenv("SECRET_TOKEN")})
     
     return jsonify({'error': 'Invalid credentials'}), 401
 
@@ -271,25 +266,21 @@ def get_orders():
             pass
 
     orders_query = orders_query.order_by(Order.id.desc())
-    
     orders_list = []
     
     for order in orders_query:
         items_list = []
         total_price_order = 0
         
-        for item in order.items:
+        for item in order.order_items:
             catalog_item = item.catalog_item
             price_per_unit = getattr(catalog_item, 'price', 0)
-            item_total = price_per_unit * item.quantity
+            item_total = price_per_unit * catalog_item.quantity
             total_price_order += item_total
             
             items_list.append({
-                'id': item.id,
                 'lot_id': getattr(catalog_item, 'lot_id', None),
-                'url': item.url,
                 'color': getattr(catalog_item, 'color', None),
-                'description': catalog_item.description,
                 'quantity_in_order': item.quantity,
                 'unit_price': price_per_unit,
                 'total_price': item_total,
@@ -303,7 +294,7 @@ def get_orders():
             'dostavka': order.dostavka,
             'total_price': total_price_order,
             'status': order.status,  # добавлено
-            'created_at': order.created_at.isoformat(),  # добавлено
+            'created_at': (order.created_at or datetime.now()).isoformat(),  # добавлено
             'items': items_list,
             'remarks': getattr(order, 'remarks', None)
         })

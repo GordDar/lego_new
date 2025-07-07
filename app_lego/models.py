@@ -1,4 +1,4 @@
-from flask_login import UserMixin
+from datetime import datetime
 
 from app_lego import db, login_manager
 from datetime import datetime
@@ -45,7 +45,7 @@ def load_user(user_id):
 
 
 # Модель "Админ пользователи"
-class AdminUser(db.Model, UserMixin):
+class AdminUser(db.Model):
     __tablename__ = 'admin_user'
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(50), unique=True)
