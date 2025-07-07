@@ -1,3 +1,5 @@
+from flask_login import UserMixin
+
 from app_lego import db, login_manager
 
 # Таблица связи "многие ко многим" с дополнительными полями
@@ -42,12 +44,21 @@ def load_user(user_id):
 
 
 # Модель "Админ пользователи"
-class AdminUser(db.Model):
+class AdminUser(db.Model, UserMixin):
     __tablename__ = 'admin_user'
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(50), unique=True)
     password_hash = db.Column(db.String(128))
 
+# Script to add admin user in docker terminal
+
+# from app_lego import db, app, AdminUser
+# from flask_bcrypt import generate_password_hash
+# with app.app_context():
+#     hashed_password = generate_password_hash('Test1234').decode('utf-8')
+#     user = AdminUser(username='admin', password_hash=hashed_password)
+#     db.session.add(user)
+#     db.session.commit()
 
 class Category(db.Model):
     __tablename__ = 'category'

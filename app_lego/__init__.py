@@ -1,10 +1,12 @@
 import csv
 import os
+from functools import wraps
 
-from flask import Flask, request, jsonify, abort
+from flask import Flask, request, jsonify, abort, g
 from flask_sqlalchemy import SQLAlchemy
 from flask_bcrypt import check_password_hash, generate_password_hash
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
+from flask_cors import CORS
 from datetime import datetime
 
 from sqlalchemy.exc import IntegrityError
@@ -24,12 +26,31 @@ INSTANCE_CONNECTION_NAME = os.getenv("INSTANCE_CONNECTION_NAME")
 #     f"{DB_NAME}?host=/cloudsql/{INSTANCE_CONNECTION_NAME}"
 # )
 app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://postgres:postgres@db:5432/mydb'
-app.config['SECRET_KEY'] = 'your_secret_key'
+app.config['SECRET_KEY'] = 'very_secret_key'
+app.secret_key = 'very_secret_key'
 db = SQLAlchemy(app)
 login_manager = LoginManager(app)
+CORS(app)
 
 
 from app_lego.models import Order, CatalogItem, Category, AdminUser, Settings, OrderItem
+
+
+def token_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        auth_header = request.headers.get('Authorization')
+        if not auth_header or not auth_header.startswith('Bearer '):
+            return jsonify({'message': 'Token missing or invalid'}), 401
+
+        token = auth_header.split()[1]
+
+        if token != os.getenv("SECRET_TOKEN"):
+            return jsonify({'message': 'Invalid or expired token'}), 401
+
+        g.current_user = AdminUser.query.filter_by(username='admin').first()  # сохраняем в глобальный контекст
+        return f(*args, **kwargs)
+    return decorated
 
 
 # --- 1. Каталог (GET /catalog) ---
@@ -214,9 +235,14 @@ def admin_login():
     
     return jsonify({'error': 'Invalid credentials'}), 401
 
+@app.route('/admin/logout', methods=['POST'])
+def admin_logout():
+    logout_user()
+    return {}
+
 # --- 4. Просмотр заказов в админке (GET /admin/orders) ---
 @app.route('/admin/orders', methods=['GET'])
-@login_required
+@token_required
 def get_orders():
     status_filter = request.args.get('status')  # например, 'new', 'completed'
     date_from = request.args.get('created_at')   # формат: 'YYYY-MM-DD'
@@ -338,7 +364,7 @@ def create_initial_settings():
       
 
 @app.route('/admin/set_currency', methods=['POST'])
-# @login_required
+@token_required
 def update_settings():
     data = request.get_json()
     

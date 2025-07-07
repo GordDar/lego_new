@@ -3,5 +3,6 @@ Flask-SQLAlchemy
 Flask-WTF
 flask-bcrypt
 flask-login
+flask-cors
 psycopg2-binary
 bs4
