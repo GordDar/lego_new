@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from app_lego import db, login_manager
 from datetime import datetime
 
@@ -50,6 +52,15 @@ class AdminUser(db.Model):
     username = db.Column(db.String(50), unique=True)
     password_hash = db.Column(db.String(128))
 
+# Script to add admin user in docker terminal
+
+# from app_lego import db, app, AdminUser
+# from flask_bcrypt import generate_password_hash
+# with app.app_context():
+#     hashed_password = generate_password_hash('Test1234').decode('utf-8')
+#     user = AdminUser(username='admin', password_hash=hashed_password)
+#     db.session.add(user)
+#     db.session.commit()
 
 class Category(db.Model):
     __tablename__ = 'category'

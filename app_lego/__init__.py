@@ -1,10 +1,12 @@
 import csv
 import os
+from functools import wraps
 
-from flask import Flask, request, jsonify, abort
+from flask import Flask, request, jsonify, abort, g
 from flask_sqlalchemy import SQLAlchemy
 from flask_bcrypt import check_password_hash, generate_password_hash
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
+from flask_cors import CORS
 from datetime import datetime
 
 from sqlalchemy.exc import IntegrityError
@@ -24,12 +26,31 @@ INSTANCE_CONNECTION_NAME = os.getenv("INSTANCE_CONNECTION_NAME")
 #     f"{DB_NAME}?host=/cloudsql/{INSTANCE_CONNECTION_NAME}"
 # )
 app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://postgres:postgres@db:5432/mydb'
-app.config['SECRET_KEY'] = 'your_secret_key'
+app.config['SECRET_KEY'] = 'very_secret_key'
+app.secret_key = 'very_secret_key'
 db = SQLAlchemy(app)
 login_manager = LoginManager(app)
+CORS(app)
 
 
 from app_lego.models import Order, CatalogItem, Category, AdminUser, Settings, OrderItem
+
+
+def token_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        auth_header = request.headers.get('Authorization')
+        if not auth_header or not auth_header.startswith('Bearer '):
+            return jsonify({'message': 'Token missing or invalid'}), 401
+
+        token = auth_header.split()[1]
+
+        if token != os.getenv("SECRET_TOKEN"):
+            return jsonify({'message': 'Invalid or expired token'}), 401
+
+        g.current_user = AdminUser.query.filter_by(username='admin').first()  # сохраняем в глобальный контекст
+        return f(*args, **kwargs)
+    return decorated
 
 
 # --- 1. Каталог (GET /catalog) ---
@@ -78,7 +99,12 @@ def get_catalog():
 
     pagination = query.paginate(page=page, per_page=per_page, error_out=False)
     items = [{
+<<<<<<< HEAD
         'item_no': item.item_no,
+=======
+        'id': item.id,
+        'lot_id': item.lot_id,
+>>>>>>> 18870977b086060e7ce3d2bb9b74b0456f9e7f6b
         'url': item.url,
         'color': item.color,
         'description': item.description,
@@ -145,8 +171,6 @@ def send_order_email(order, order_details):
         print("Email успешно отправлен")
     except Exception as e:
         print(f"Ошибка при отправке email: {e}")
-
-
 
 @app.route('/cart', methods=['POST'])
 def submit_cart():
@@ -228,9 +252,6 @@ def submit_cart():
 
     return jsonify({'message': 'Order created', 'order_id': order.id})
 
-
-
-
 # --- 3. Логин для админки (POST /admin/login) ---
 @app.route('/admin/login', methods=['POST'])
 def admin_login():
@@ -240,17 +261,23 @@ def admin_login():
 
     user = AdminUser.query.filter_by(username=username).first()
     if user and check_password_hash(user.password_hash, password):
-        login_user(user)
-        return jsonify({'message': 'Logged in'})
+        return jsonify({'access_token': os.getenv("SECRET_TOKEN")})
     
     return jsonify({'error': 'Invalid credentials'}), 401
 
+<<<<<<< HEAD
 
 
+=======
+@app.route('/admin/logout', methods=['POST'])
+def admin_logout():
+    logout_user()
+    return {}
+>>>>>>> 18870977b086060e7ce3d2bb9b74b0456f9e7f6b
 
 # --- 4. Просмотр заказов в админке (GET /admin/orders) ---
 @app.route('/admin/orders', methods=['GET'])
-@login_required
+@token_required
 def get_orders():
     status_filter = request.args.get('status')  # например, 'new', 'completed'
     date_from = request.args.get('created_at')   # формат: 'YYYY-MM-DD'
@@ -279,22 +306,28 @@ def get_orders():
             pass
 
     orders_query = orders_query.order_by(Order.id.desc())
-    
     orders_list = []
     
     for order in orders_query:
         items_list = []
         
-        for item in order.items:
+        for item in order.order_items:
             catalog_item = item.catalog_item
             price_per_unit = getattr(catalog_item, 'price', 0)
+<<<<<<< HEAD
  
             
             items_list.append({
                 'item_no': getattr(catalog_item, 'item_no', None),
                 'url': item.url,
+=======
+            item_total = price_per_unit * catalog_item.quantity
+            total_price_order += item_total
+            
+            items_list.append({
+                'lot_id': getattr(catalog_item, 'lot_id', None),
+>>>>>>> 18870977b086060e7ce3d2bb9b74b0456f9e7f6b
                 'color': getattr(catalog_item, 'color', None),
-                'description': catalog_item.description,
                 'quantity_in_order': item.quantity,
                 'unit_price': price_per_unit,
                 'total_price': item.quantity*price_per_unit,
@@ -308,7 +341,7 @@ def get_orders():
             'dostavka': order.dostavka,
             'total_price': order.total_price,
             'status': order.status,  # добавлено
-            'created_at': order.created_at.isoformat(),  # добавлено
+            'created_at': (order.created_at or datetime.now()).isoformat(),  # добавлено
             'items': items_list,
             'remarks': getattr(order, 'remarks', None)
         })
@@ -368,8 +401,13 @@ def create_initial_settings():
     db.session.commit()
       
 
+<<<<<<< HEAD
 @app.route('/admin/settings', methods=['POST'])
 # @login_required
+=======
+@app.route('/admin/set_currency', methods=['POST'])
+@token_required
+>>>>>>> 18870977b086060e7ce3d2bb9b74b0456f9e7f6b
 def update_settings():
     data = request.get_json()
     
