@@ -36,12 +36,17 @@ from app_lego.models import Order, CatalogItem, Category, AdminUser, Settings, O
 @app.route('/catalog', methods=['GET'])
 def get_catalog():
     search = request.args.get('search', '', type=str)
+    search_category = request.args.get('category', '', type=str)
     search_id = request.args.get('search_id', '', type=int)
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 20, type=int)
 
     query = CatalogItem.query
 
+    # Добавляем фильтр для исключения товаров с количеством 0
+    query = query.filter(CatalogItem.quantity > 0)
+
+    # Поиск по общим полям
     if search:
         search_term = f"%{search}%"
         query = query.filter(
@@ -50,23 +55,36 @@ def get_catalog():
                 CatalogItem.description.ilike(search_term)
             )
         )
-        
+
+    # Поиск по id товара
     if search_id:
-        search_term_id = f"%{search_id}%"
-        query = query.filter(
-            db.or_(
-                CatalogItem.lot_id.ilike(search_term_id),
-            )
-        )
+        query = query.filter(CatalogItem.item_no.ilike(f"%{search_id}%"))
+
+    # Поиск по названию категории
+    if search_category:
+        # Ищем категорию по имени
+        category = Category.query.filter_by(name=search_category).first()
+        if category:
+            # Фильтруем товары по category_id
+            query = query.filter(CatalogItem.category_id == category.id)
+        else:
+            # Если категория не найдена, возвращаем пустой результат
+            return jsonify({
+                'items': [],
+                'total': 0,
+                'pages': 0,
+                'current_page': page
+            })
 
     pagination = query.paginate(page=page, per_page=per_page, error_out=False)
     items = [{
-        'lot_id': item.lot_id,
+        'item_no': item.item_no,
         'url': item.url,
         'color': item.color,
         'description': item.description,
         'price': item.price,
         'quantity': item.quantity,
+        'category_name': item.category.name if item.category else None
     } for item in pagination.items]
 
     return jsonify({
@@ -75,6 +93,7 @@ def get_catalog():
         'pages': pagination.pages,
         'current_page': pagination.page
     })
+    
 
 # --- 2. Отправка корзины (POST /cart) ---
 import smtplib
@@ -90,13 +109,14 @@ EMAIL_PASSWORD = 'lego_storage_password' # ваш пароль
 # Данные на почту
 def send_order_email(order, order_details):
     subject = f"Новый заказ #{order.id}"
-    to_email = 'oldi2008@yandex.ru'
+    to_email = 'legobricks2025@gmail.com'
     
     # Формируем тело письма
     body = f"Новый заказ №{order.id}\n"
     body += f"Дата: {order.created_at}\n"
     body += f"Клиент: {order.customer_name}\n"
     body += f"Телефон: {order.customer_telephone}\n"
+    body += f"Почта: {order.customer_email}\n"
     body += f"Доставка: {'Да' if order.dostavka else 'Нет'}\n"
     body += f"Время создания заказа: {order.created_at}\n"
     body += f"Общая сумма: {order.total_price}\n\n"
@@ -134,13 +154,41 @@ def submit_cart():
     items_data = data.get('items')
     customer_name = data.get('customer_name')
     customer_telephone = data.get('customer_telephone')
+    customer_email = data.get('customer_email')
     dostavka = data.get('dostavka', False)
-    total_price = data.get('total_price')
 
-    if not items_data or not customer_name or not customer_telephone or total_price is None:
+    if not items_data or not customer_name or not customer_telephone:
         return jsonify({'error': 'Missing required fields'}), 400
-    
-    # Проверка минимальной суммы заказа (по вашему условию)
+
+    order_details_for_email = []
+    total_price = 0  # Инициализация суммы заказа
+
+    # Проходим по товарам, чтобы посчитать сумму
+    for item in items_data:
+        catalog_item_id = item['item_no']
+        quantity_requested = item.get('quantity', 1)
+        catalog_item = CatalogItem.query.get(catalog_item_id)
+
+        if not catalog_item:
+            return jsonify({'error': f'Item with id {catalog_item_id} not found'}), 404
+        if catalog_item.quantity < quantity_requested:
+            return jsonify({
+                'error': f'Недостаточно товара "{catalog_item.description}". '
+                         f'Доступно: {catalog_item.quantity}, запрошено: {quantity_requested}'
+            }), 400
+
+        price_per_unit = getattr(catalog_item, 'price', 0)
+        total_price += price_per_unit * quantity_requested  # Добавляем к общей сумме
+
+        # Собираем данные для email
+        order_details_for_email.append({
+            'description': catalog_item.description,
+            'quantity_in_order': quantity_requested,
+            'unit_price': price_per_unit,
+            'total_price': price_per_unit * quantity_requested
+        })
+
+    # Проверка минимальной суммы заказа
     settings = Settings.query.filter_by(settings_name='min').first()
     if settings and settings.settings_value is not None:
         if total_price < settings.settings_value:
@@ -149,28 +197,20 @@ def submit_cart():
                          f'Ваш заказ на сумму {total_price} не может быть принят.'
             }), 400
 
+    # Создаем заказ с рассчитанной суммой
     order = Order(
         customer_name=customer_name,
         customer_telephone=customer_telephone,
+        customer_email= customer_email,
         dostavka=dostavka,
         total_price=total_price
     )
-
-    order_details_for_email = []
 
     for item in items_data:
         catalog_item_id = item['id']
         quantity_requested = item.get('quantity', 1)
         catalog_item = CatalogItem.query.get(catalog_item_id)
-        
-        if not catalog_item:
-            return jsonify({'error': f'Item with id {catalog_item_id} not found'}), 404
-        if catalog_item.quantity < quantity_requested:
-            return jsonify({
-                'error': f'Недостаточно товара "{catalog_item.description}". '
-                         f'Доступно: {catalog_item.quantity}, запрошено: {quantity_requested}'
-            }), 400
-        
+
         order_item = OrderItem(
             catalog_item=catalog_item,
             quantity=quantity_requested
@@ -180,19 +220,10 @@ def submit_cart():
         # Обновляем количество на складе
         catalog_item.quantity -= quantity_requested
 
-        # Собираем данные для email
-        order_details_for_email.append({
-            'description': catalog_item.description,
-            'quantity_in_order': quantity_requested,
-            'unit_price': getattr(catalog_item, 'price', 0),
-            'total_price': getattr(catalog_item, 'price', 0) * quantity_requested
-        })
-
     db.session.add(order)
     db.session.commit()
 
-    # Устанавливаем время создания (если не установлено по умолчанию)
-    # и вызываем функцию отправки письма
+    # Отправляем письмо с заказом
     send_order_email(order, order_details_for_email)
 
     return jsonify({'message': 'Order created', 'order_id': order.id})
@@ -213,6 +244,9 @@ def admin_login():
         return jsonify({'message': 'Logged in'})
     
     return jsonify({'error': 'Invalid credentials'}), 401
+
+
+
 
 # --- 4. Просмотр заказов в админке (GET /admin/orders) ---
 @app.route('/admin/orders', methods=['GET'])
@@ -250,32 +284,29 @@ def get_orders():
     
     for order in orders_query:
         items_list = []
-        total_price_order = 0
         
         for item in order.items:
             catalog_item = item.catalog_item
             price_per_unit = getattr(catalog_item, 'price', 0)
-            item_total = price_per_unit * item.quantity
-            total_price_order += item_total
+ 
             
             items_list.append({
-                'id': item.id,
-                'lot_id': getattr(catalog_item, 'lot_id', None),
+                'item_no': getattr(catalog_item, 'item_no', None),
                 'url': item.url,
                 'color': getattr(catalog_item, 'color', None),
                 'description': catalog_item.description,
                 'quantity_in_order': item.quantity,
                 'unit_price': price_per_unit,
-                'total_price': item_total,
+                'total_price': item.quantity*price_per_unit,
                 'remarks': getattr(item, 'remarks', None)
             })
         
         orders_list.append({
-            'id': order.id,
             'customer_name': order.customer_name,
             'customer_telephone': order.customer_telephone,
+            'customer_email': order.customer_email,
             'dostavka': order.dostavka,
-            'total_price': total_price_order,
+            'total_price': order.total_price,
             'status': order.status,  # добавлено
             'created_at': order.created_at.isoformat(),  # добавлено
             'items': items_list,
@@ -337,7 +368,7 @@ def create_initial_settings():
     db.session.commit()
       
 
-@app.route('/admin/set_currency', methods=['POST'])
+@app.route('/admin/settings', methods=['POST'])
 # @login_required
 def update_settings():
     data = request.get_json()
@@ -410,24 +441,21 @@ def get_order(order_id):
         abort(404, description="Order not found")
     
     items_list = []
-    total_price_order = 0
+
 
     for item in order.items:
         catalog_item = item.catalog_item
         price_per_unit = catalog_item.price if catalog_item else 0
         quantity = item.quantity
-        item_total = price_per_unit * quantity
-        total_price_order += item_total
 
         items_list.append({
-            'id': item.catalog_item.id,
-            'lot_id': catalog_item.lot_id,
+            'item_no': catalog_item.item_no,
             'url': catalog_item.url,
             'color': catalog_item.color,
             'description': catalog_item.description,
             'quantity_in_order': quantity,
             'unit_price': price_per_unit,
-            'total_price': item_total,
+            'total_price': quantity*price_per_unit,
             "remarks": catalog_item.remarks
         })
 
@@ -435,8 +463,9 @@ def get_order(order_id):
         "id": order.id,
         "customer_name": order.customer_name,
         "customer_telephone": order.customer_telephone,
+        "customer_email": order.customer_email,
         "dostavka": order.dostavka,
-        "total_price": total_price_order,
+        "total_price": order.total_price,
         "items": items_list,
     }
 
@@ -451,7 +480,7 @@ def get_catalog_item(item_id):
     item = CatalogItem.query.get(item_id)
     if item:
         return jsonify({
-            'lot_id': item.lot_id,
+            'item_no': item.item_no,
             'color': item.color,
             'category': item.category.name,
             'condition': item.condition,
@@ -496,12 +525,11 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
 
-def get_image_src_with_selenium(lot_id):
-    url = f'https://www.bricklink.com/v2/catalog/catalogitem.page?P={lot_id}'
+def get_image_src_with_selenium(item_no):
+    url = f'https://www.bricklink.com/v2/catalog/catalogitem.page?P={item_no}'
     options = webdriver.ChromeOptions()
     options.add_argument('--headless')  # запуск без графического интерфейса
     
-    # Используем ChromeDriverManager для автоматической установки драйвера
     driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
     
     try:
@@ -520,26 +548,44 @@ def db_add():
     with open('database.csv', newline='', encoding='utf-8') as csvfile:
         reader = csv.DictReader(csvfile)
 
-        # Обработка заголовков: убираем пробелы и делаем их нижним регистром
+        # Обработка заголовков
         rows = []
         for row in reader:
             row = {k.strip(): v for k, v in row.items()}
             rows.append(row)
 
+        # Очистка таблицы
         db.session.query(CatalogItem).delete()
         db.session.commit()
-        
-        
-        lot_id = row['Lot ID'].strip()
-        image_url = get_image_src_with_selenium(lot_id)
+
+        image_cache = {}
 
         for row in rows:
+            item_no = row.get('Item No', '').strip()
+
+            # Получение изображения по item_no
+            if item_no:
+                if item_no in image_cache:
+                    image_url = image_cache[item_no]
+                else:
+                    try:
+                        image_url = get_image_src_with_selenium(item_no)
+                        image_cache[item_no] = image_url
+                    except Exception as e:
+                        print(f"Ошибка при получении изображения для Item No {item_no}: {e}")
+                        image_url = None
+            else:
+                image_url = None
+
+            # Обработка категории
+            category_name = row['Category'].strip()
+            category, created = get_or_create(db.session, Category, name=category_name)
+
             # Создаем объект CatalogItem
-            category, created = get_or_create(db.session, Category, name=row['Category'].strip())
             item = CatalogItem(
-                lot_id=lot_id,
+                lot_id=row['Lot ID'].strip(),
                 color=row['Color'].strip(),
-                category_id=category.id,  # предполагается, что category - это id (число)
+                category_id=category.id,
                 condition=row.get('Condition', '').strip(),
                 sub_condition=row.get('Sub-Condition', '').strip(),
                 description=row.get('Description', '').strip(),
@@ -549,7 +595,7 @@ def db_add():
                 bulk=str_to_bool(row.get('Bulk', 'False')),
                 sale=str_to_bool(row.get('Sale', 'False')),
                 url= image_url,
-                item_no=row.get('Item No', '').strip(),
+                item_no=item_no,
                 tier_qty_1=int(row['Tier Qty 1']) if row['Tier Qty 1'] else None,
                 tier_price_1=float(row['Tier Price 1'].replace('$', '').strip()) if row['Tier Price 1'] else None,
                 tier_qty_2=int(row['Tier Qty 2']) if row['Tier Qty 2'] else None,
@@ -571,6 +617,7 @@ def db_add():
                 currency=row.get('Currency', '').strip()
             )
             db.session.add(item)
+
     db.session.commit()
     return '', 200
 
@@ -591,7 +638,7 @@ def get_items_by_category_part(category_part):
     
     def serialize_item(item):
         return {
-            "lot_id": item.lot_id,
+            "item_no": item.item_no,
             "color": item.color,
             "description": item.description,
             "price": item.price,
@@ -609,11 +656,11 @@ def update_or_create():
     if not data:
         abort(400, description="Invalid JSON data")
     
-    lot_id = data.get('lot_id')
-    if not lot_id:
-        abort(400, description="Missing 'lot_id' in request data")
+    item_no = data.get('item_no')
+    if not item_no:
+        abort(400, description="Missing 'item_no' in request data")
     
-    item = CatalogItem.query.filter_by(lot_id=lot_id).first()
+    item = CatalogItem.query.filter_by(item_no=item_no).first()
     
     if item:
         # Обновляем только те поля, которые есть в данных и не пустые
@@ -640,12 +687,12 @@ def update_or_create():
             category_obj, _ = get_or_create(db.session, Category, name=category_name)
         
         new_item = CatalogItem(
-            lot_id=lot_id,
+            item_no=item_no,
             color=data.get('color'),
             description=data.get('description'),
             price=data.get('price'),
             quantity=data.get('quantity'),
-            url=data.get('url') if data else get_image_src_with_selenium(lot_id),
+            url=data.get('url') if data else get_image_src_with_selenium(item_no),
             category_id=category_obj.id if category_obj else None,
             remarks = data.get('remarks')
         )
@@ -723,19 +770,18 @@ def parse_xml_from_gcs(file_name):
 
             # Преобразуем числовые значения
             try:
-                item_id = int(item_id_text)
                 max_price = float(max_price_text)
                 min_qty = int(min_qty_text)
             except (ValueError, AttributeError):
                 print(f"Некорректные данные для ITEMID={item_id_text}")
                 continue
 
-            existing_item = CatalogItem.query.filter_by(id=item_id).first()
+            existing_item = CatalogItem.query.filter_by(item_no=item_id_text).first()
 
             if existing_item:
                 print(f"Найден товар: {existing_item}")            
             else:
-                print(f"Товар с ITEMID={item_id} не найден в базе.")
+                print(f"Товар с ITEMID={item_id_text} не найден в базе.")
     except Exception as e:
         print(f"Ошибка при получении файла из GCS: {e}")
 
