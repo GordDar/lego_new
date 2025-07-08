@@ -99,12 +99,7 @@ def get_catalog():
 
     pagination = query.paginate(page=page, per_page=per_page, error_out=False)
     items = [{
-<<<<<<< HEAD
         'item_no': item.item_no,
-=======
-        'id': item.id,
-        'lot_id': item.lot_id,
->>>>>>> 18870977b086060e7ce3d2bb9b74b0456f9e7f6b
         'url': item.url,
         'color': item.color,
         'description': item.description,
@@ -265,15 +260,10 @@ def admin_login():
     
     return jsonify({'error': 'Invalid credentials'}), 401
 
-<<<<<<< HEAD
-
-
-=======
 @app.route('/admin/logout', methods=['POST'])
 def admin_logout():
     logout_user()
     return {}
->>>>>>> 18870977b086060e7ce3d2bb9b74b0456f9e7f6b
 
 # --- 4. Просмотр заказов в админке (GET /admin/orders) ---
 @app.route('/admin/orders', methods=['GET'])
@@ -314,19 +304,11 @@ def get_orders():
         for item in order.order_items:
             catalog_item = item.catalog_item
             price_per_unit = getattr(catalog_item, 'price', 0)
-<<<<<<< HEAD
  
             
             items_list.append({
                 'item_no': getattr(catalog_item, 'item_no', None),
                 'url': item.url,
-=======
-            item_total = price_per_unit * catalog_item.quantity
-            total_price_order += item_total
-            
-            items_list.append({
-                'lot_id': getattr(catalog_item, 'lot_id', None),
->>>>>>> 18870977b086060e7ce3d2bb9b74b0456f9e7f6b
                 'color': getattr(catalog_item, 'color', None),
                 'quantity_in_order': item.quantity,
                 'unit_price': price_per_unit,
@@ -401,13 +383,8 @@ def create_initial_settings():
     db.session.commit()
       
 
-<<<<<<< HEAD
-@app.route('/admin/settings', methods=['POST'])
-# @login_required
-=======
 @app.route('/admin/set_currency', methods=['POST'])
 @token_required
->>>>>>> 18870977b086060e7ce3d2bb9b74b0456f9e7f6b
 def update_settings():
     data = request.get_json()
     
