@@ -108,6 +108,7 @@ def get_catalog():
     query = query.order_by(CatalogItem.id)
     pagination = query.paginate(page=page, per_page=per_page, error_out=False)
     items = [{
+        'id': item.id,
         'item_no': item.item_no,
         'url': item.url,
         'color': item.color,
@@ -393,7 +394,7 @@ def create_initial_settings():
     db.session.commit()
       
 
-@app.route('/admin/set_currency', methods=['POST'])
+@app.route('/admin/settings', methods=['POST'])
 @token_required
 def update_settings():
     data = request.get_json()
@@ -777,11 +778,13 @@ def presigned_url():
         return jsonify({'url': url, 'file_name': file_name})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
-    
-    
-    
+
+
+@app.route('/presigned_url', methods=['POST'])
 # --- 13. Загрузка wanted_list ---
-def parse_xml_from_gcs(file_name):
+def parse_xml_from_gcs():
+    data = request.get_json()
+    file_name = data.get('file_name')
     try:
         bucket = storage_client.bucket(BUCKET_NAME)
         blob = bucket.blob(file_name)
