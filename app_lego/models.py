@@ -20,6 +20,7 @@ class Order(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     customer_name = db.Column(db.String(100))
     customer_telephone = db.Column(db.String(50))
+    customer_email = db.Column(db.String(100))
     dostavka = db.Column(db.Boolean, default=False)
     total_price = db.Column(db.Float)
     status = db.Column(db.String(20), default='не исполнен')  
@@ -72,7 +73,7 @@ class Category(db.Model):
 
 class CatalogItem(db.Model):
     __tablename__ = 'catalog_items'
-    __searchable__ = ['color', 'description']
+    __searchable__ = ['color', 'description', 'category']
 
     id = db.Column(db.Integer, primary_key=True)
 
@@ -128,3 +129,10 @@ class CatalogItem(db.Model):
         back_populates='catalog_item',
         cascade='all, delete-orphan'
     )
+    
+    
+class Images(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    ids = db.Column(db.String(30))
+    image_url = db.Column(db.String(255))  
+
