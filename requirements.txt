@@ -7,3 +7,5 @@ flask-cors
 psycopg2-binary
 bs4
 google-cloud-storage
+selenium
+webdriver_manager

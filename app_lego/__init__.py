@@ -1,5 +1,8 @@
 import csv
+import io
 import os
+import re
+import unicodedata
 from functools import wraps
 
 from flask import Flask, request, jsonify, abort, g
@@ -13,6 +16,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from bs4 import BeautifulSoup
+from google.cloud import storage
 
 app = Flask(__name__)
 
@@ -31,6 +35,10 @@ app.secret_key = 'very_secret_key'
 db = SQLAlchemy(app)
 login_manager = LoginManager(app)
 CORS(app)
+
+storage_client = storage.Client()  # Предполагается, что настроены переменные окружения или сервисный аккаунт
+
+BUCKET_NAME = 'bucket-wanted-lists_lego-bricks-app'
 
 
 from app_lego.models import Order, CatalogItem, Category, AdminUser, Settings, OrderItem
@@ -80,6 +88,7 @@ def get_catalog():
             )
         )
 
+    query = query.order_by(CatalogItem.id)
     pagination = query.paginate(page=page, per_page=per_page, error_out=False)
     items = [{
         'id': item.id,
@@ -89,6 +98,7 @@ def get_catalog():
         'description': item.description,
         'price': item.price,
         'quantity': item.quantity,
+        'remarks': item.remarks
     } for item in pagination.items]
 
     return jsonify({
@@ -155,6 +165,7 @@ def submit_cart():
     customer_name = data.get('customer_name')
     customer_telephone = data.get('customer_telephone')
     dostavka = data.get('dostavka', False)
+    # TODO: change
     total_price = data.get('total_price')
 
     if not items_data or not customer_name or not customer_telephone or total_price is None:
@@ -195,6 +206,7 @@ def submit_cart():
             catalog_item=catalog_item,
             quantity=quantity_requested
         )
+        db.session.add(order_item)
         order.order_items.append(order_item)
 
         # Обновляем количество на складе
@@ -246,7 +258,6 @@ def get_orders():
     per_page = request.args.get('per_page', 20, type=int)
     
     orders_query = Order.query
-    
 
     if status_filter:
         orders_query = orders_query.filter(Order.status == status_filter)
@@ -313,7 +324,7 @@ def get_orders():
     
 # --- 4.1. Удаление выполненных заказов в админке (DELETE /admin/orders/{order_id}) --- 
 @app.route('/admin/orders/<int:order_id>', methods=['DELETE'])
-@login_required
+@token_required
 def delete_order(order_id):
     # Ищем заказ по ID
     order = Order.query.get(order_id)
@@ -321,8 +332,9 @@ def delete_order(order_id):
         return jsonify({'error': 'Order not found'}), 404
 
     # Проверяем статус заказа
-    if order.status != 'исполнен':
-        return jsonify({'error': 'Only completed orders can be deleted'}), 400
+    # TODO: uncomment
+    # if order.status != 'исполнен':
+    #     return jsonify({'error': 'Only completed orders can be deleted'}), 400
 
     try:
         db.session.delete(order)
@@ -429,7 +441,7 @@ def get_order(order_id):
     items_list = []
     total_price_order = 0
 
-    for item in order.items:
+    for item in order.order_items:
         catalog_item = item.catalog_item
         price_per_unit = catalog_item.price if catalog_item else 0
         quantity = item.quantity
@@ -445,7 +457,8 @@ def get_order(order_id):
             'quantity_in_order': quantity,
             'unit_price': price_per_unit,
             'total_price': item_total,
-            "remarks": catalog_item.remarks
+            "remarks": catalog_item.remarks,
+            "quantity": catalog_item.quantity
         })
 
     response_data = {
@@ -476,7 +489,8 @@ def get_catalog_item(item_id):
             'price': item.price,
             'quantity': item.quantity,
             'url': item.url,
-            'currency': item.currency
+            'currency': item.currency,
+            'remarks': item.remarks
         })
     else:
         abort(404, description="Item not found")
@@ -534,51 +548,59 @@ def get_image_src_with_selenium(lot_id):
 
 @app.route('/db_add', methods=['POST'])
 def db_add():
-    with open('database.csv', newline='', encoding='utf-8') as csvfile:
-        reader = csv.DictReader(csvfile)
+    data = request.get_json()
+    file_name = data.get('file_name')
+    try:
+        bucket = storage_client.bucket(BUCKET_NAME)
+        blob = bucket.blob(file_name)
+
+        content = blob.download_as_text(encoding='utf-8')
+
+        reader = csv.DictReader(io.StringIO(content))
 
         # Обработка заголовков: убираем пробелы и делаем их нижним регистром
         rows = []
         for row in reader:
-            row = {k.strip(): v for k, v in row.items()}
+            row = {(k or '').strip(): v for k, v in row.items()}
             rows.append(row)
 
+        db.session.query(Category).delete()
+        db.session.query(OrderItem).delete()
         db.session.query(CatalogItem).delete()
         db.session.commit()
-        
-        
-        lot_id = row['Lot ID'].strip()
-        image_url = get_image_src_with_selenium(lot_id)
 
         for row in rows:
+            lot_id = row['Lot ID'].strip()
+            image_url = row.get('URL', '')
+            # image_url = get_image_src_with_selenium(lot_id)
             # Создаем объект CatalogItem
-            category, created = get_or_create(db.session, Category, name=row['Category'].strip())
+            category, created = get_or_create(db.session, Category, name=row.get('Category', '').strip())
             item = CatalogItem(
                 lot_id=lot_id,
-                color=row['Color'].strip(),
+                color=row.get('Color', '').strip(),
                 category_id=category.id,  # предполагается, что category - это id (число)
                 condition=row.get('Condition', '').strip(),
                 sub_condition=row.get('Sub-Condition', '').strip(),
                 description=row.get('Description', '').strip(),
                 remarks=row.get('Remarks', '').strip(),
-                price=float(row['Price'].replace('$', '').strip()) if row['Price'] else None,
-                quantity=int(row['Quantity']) if row['Quantity'] else None,
+                price=float(row['Price'].replace('$', '').strip()) if row.get('Price') else None,
+                quantity=int(row['Quantity']) if row.get('Quantity') else None,
                 bulk=str_to_bool(row.get('Bulk', 'False')),
                 sale=str_to_bool(row.get('Sale', 'False')),
                 url= image_url,
                 item_no=row.get('Item No', '').strip(),
-                tier_qty_1=int(row['Tier Qty 1']) if row['Tier Qty 1'] else None,
-                tier_price_1=float(row['Tier Price 1'].replace('$', '').strip()) if row['Tier Price 1'] else None,
-                tier_qty_2=int(row['Tier Qty 2']) if row['Tier Qty 2'] else None,
-                tier_price_2=float(row['Tier Price 2'].replace('$', '').strip()) if row['Tier Price 2'] else None,
-                tier_qty_3=int(row['Tier Qty 3']) if row['Tier Qty 3'] else None,
-                tier_price_3=float(row['Tier Price 3'].replace('$', '').strip()) if row['Tier Price 3'] else None,
+                tier_qty_1=int(row['Tier Qty 1']) if row.get('Tier Qty 1') else None,
+                tier_price_1=float(row['Tier Price 1'].replace('$', '').strip()) if row.get('Tier Price 1') else None,
+                tier_qty_2=int(row['Tier Qty 2']) if row.get('Tier Qty 2') else None,
+                tier_price_2=float(row['Tier Price 2'].replace('$', '').strip()) if row.get('Tier Price 2') else None,
+                tier_qty_3=int(row['Tier Qty 3']) if row.get('Tier Qty 3') else None,
+                tier_price_3=float(row['Tier Price 3'].replace('$', '').strip()) if row.get('Tier Price 3') else None,
                 reserved_for=row.get('Reserved For', '').strip(),
                 stockroom=row.get('Stockroom', '').strip(),
                 retain=str_to_bool(row.get('Retain', 'False')),
                 super_lot_id=row.get('Super Lot ID', '').strip(),
-                super_lot_qty=int(row['Super Lot Qty']) if row['Super Lot Qty'] else None,
-                weight=float(row['Weight']) if row['Weight'] else None,
+                super_lot_qty=int(row['Super Lot Qty']) if row.get('Super Lot Qty') else None,
+                weight=float(row['Weight']) if row.get('Weight') else None,
                 extended_description=row.get('Extended Description', '').strip(),
 
                 date_added=datetime.strptime(row['Date Added'], '%m/%d/%Y') if row.get('Date Added') else None,
@@ -588,8 +610,11 @@ def db_add():
                 currency=row.get('Currency', '').strip()
             )
             db.session.add(item)
-    db.session.commit()
-    return '', 200
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"status": "error", "message": str(e)}), 500
+    return 'Success', 200
 
 
 
@@ -620,8 +645,8 @@ def get_items_by_category_part(category_part):
 
 
 # --- 11. Создание или изменение деталей ---
-@app.route('/update_or_create', methods=['POST'])
-def update_or_create():
+@app.route('/catalog_item/<int:item_id>', methods=['POST'])
+def update_or_create(item_id):
     data = request.get_json()
     if not data:
         abort(400, description="Invalid JSON data")
@@ -629,12 +654,15 @@ def update_or_create():
     lot_id = data.get('lot_id')
     if not lot_id:
         abort(400, description="Missing 'lot_id' in request data")
-    
-    item = CatalogItem.query.filter_by(lot_id=lot_id).first()
+
+    if item_id == 0:
+        item = None
+    else:
+        item = CatalogItem.query.filter_by(id=item_id).first()
     
     if item:
         # Обновляем только те поля, которые есть в данных и не пустые
-        for field in ['color', 'description', 'price', 'quantity', 'url', 'category', 'remarks']:
+        for field in ['lot_id', 'color', 'description', 'price', 'quantity', 'url', 'category', 'condition', 'remarks']:
             value = data.get(field)
             if value is not None:
                 # Для строковых полей можно дополнительно проверить на пустую строку
@@ -675,14 +703,14 @@ def update_or_create():
 
 
 # --- 12. presigned_url ---
-from google.cloud import storage
 
-
-# Инициализация клиента GCS
-storage_client = storage.Client()  # Предполагается, что настроены переменные окружения или сервисный аккаунт
-
-# Название вашего бакета
-BUCKET_NAME = 'ваш_имя_бакета'
+def sanitize_filename(filename):
+    # Приводим к ASCII
+    nfkd_form = unicodedata.normalize('NFKD', filename)
+    ascii_filename = nfkd_form.encode('ASCII', 'ignore').decode('ASCII')
+    # Удаляем любые недопустимые символы
+    ascii_filename = re.sub(r'[^A-Za-z0-9_.-]', '_', ascii_filename)
+    return ascii_filename
 
 @app.route('/presigned_url', methods=['POST'])
 def presigned_url():
@@ -690,7 +718,9 @@ def presigned_url():
     if not data or 'file_name' not in data:
         abort(400, description="Missing 'file_name' in request data")
     
-    file_name = data['file_name']
+    original_file_name = data['file_name']
+    file_name = sanitize_filename(original_file_name)
+
     try:
         bucket = storage_client.bucket(BUCKET_NAME)
         blob = bucket.blob(file_name)
@@ -702,7 +732,7 @@ def presigned_url():
             method='PUT'
         )
 
-        return jsonify({'url': url})
+        return jsonify({'url': url, 'file_name': file_name})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
     
