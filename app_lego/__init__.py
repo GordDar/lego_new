@@ -30,7 +30,7 @@ INSTANCE_CONNECTION_NAME = os.getenv("INSTANCE_CONNECTION_NAME")
 #     f"postgresql+psycopg2://{DB_USER}:{DB_PASS}@/"
 #     f"{DB_NAME}?host=/cloudsql/{INSTANCE_CONNECTION_NAME}"
 # )
-app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://postgres:postgres@db:5432/new_db'
+app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://postgres:postgres@db:5432/mydb'
 app.config['SECRET_KEY'] = 'very_secret_key'
 app.secret_key = 'very_secret_key'
 db = SQLAlchemy(app)
@@ -559,28 +559,141 @@ def get_or_create(session: Session, model, defaults=None, **kwargs):
             return session.query(model).filter_by(**kwargs).first(), False
         
         
-from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from webdriver_manager.chrome import ChromeDriverManager
+# from selenium import webdriver
+# from selenium.webdriver.chrome.service import Service
+# from selenium.webdriver.common.by import By
+# from selenium.webdriver.support.ui import WebDriverWait
+# from selenium.webdriver.support import expected_conditions as EC
+# from webdriver_manager.chrome import ChromeDriverManager
 
-def get_image_src_with_selenium(item_no):
-    url = f'https://www.bricklink.com/v2/catalog/catalogitem.page?P={item_no}'
-    options = webdriver.ChromeOptions()
-    options.add_argument('--headless')  # запуск без графического интерфейса
+# def get_image_src_with_selenium(item_no):
+#     url = f'https://www.bricklink.com/v2/catalog/catalogitem.page?P={item_no}'
+#     options = webdriver.ChromeOptions()
+#     options.add_argument('--headless')  # запуск без графического интерфейса
 
-    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
+#     driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
     
-    try:
-        driver.get(url)
-        wait = WebDriverWait(driver, 10)
-        img = wait.until(EC.presence_of_element_located((By.ID, '_idImageMain')))
-        src = img.get_attribute('src')
-        return src
-    finally:
-        driver.quit()
+#     try:
+#         driver.get(url)
+#         wait = WebDriverWait(driver, 10)
+#         img = wait.until(EC.presence_of_element_located((By.ID, '_idImageMain')))
+#         src = img.get_attribute('src')
+#         return src
+#     finally:
+#         driver.quit()
+
+
+
+color_dict = {
+    'Black': '11',
+    'Blue': '7',
+    'Bright Green': '36',
+    'Bright Light Blue': '105',
+    'Bright Light Orange': '110',
+    'Bright Light Yellow': '103',
+    'Bright Pink': '104',
+    'Brown': '8',
+    'Chrome Silver': '22',
+    'Coral': '220',
+    'Dark Azure': '153',
+    'Dark Blue': '63',
+    'Dark Bluish Gray': '85',
+    'Dark Brown': '120',
+    'Dark Gray': '10',
+    'Dark Green': '80',
+    'Dark Orange': '68',
+    'Dark Pink': '47',
+    'Dark Purple': '89',
+    'Dark Red': '59',
+    'Dark Tan': '69',
+    'Dark Turquoise': '39',
+    'Flat Dark Gold': '81',
+    'Flat Silver': '95',
+    'Glitter Trans-Clear': '101',
+    'Glitter Trans-Light Blue': '162',
+    'Glitter Trans-Purple': '102',
+    'Green': '6',
+    'Lavender': '154',
+    'Light Aqua': '152',
+    'Light Bluish Gray': '86',
+    'Light Brown': '91',
+    'Light Gray': '9',
+    'Light Nougat': '90',
+    'Lime': '34',
+    'Maersk Blue': '72',
+    'Magenta': '71',
+    'Medium Azure': '156',
+    'Medium Blue': '42',
+    'Medium Lavender': '157',
+    'Medium Nougat': '150',
+    'Medium Orange': '31',
+    'Metallic Copper': '250',
+    'Metallic Gold': '65',
+    'Metallic Silver': '67',
+    'Nougat': '28',
+    'Olive Green': '155',
+    'Orange': '4',
+    'Pearl Dark Gray': '77',
+    'Pearl Gold': '115',
+    'Pearl Light Gray': '66',
+    'Red': '5',
+    'Reddish Brown': '88',
+    'Reddish Copper': '249',
+    'Sand Blue': '55',
+    'Sand Green': '48',
+    'Satin Trans-Light Blue': '229',
+    'Tan': '2',
+    'Trans-Black': '251',
+    'Trans-Bright Green': '108',
+    'Trans-Brown': '13',
+    'Trans-Clear': '12',
+    'Trans-Dark Blue': '14',
+    'Trans-Dark Pink': '50',
+    'Trans-Green': '20',
+    'Trans-Light Blue': '15',
+    'Trans-Light Purple': '114',
+    'Trans-Medium Blue': '74',
+    'Trans-Neon Green': '16',
+    'Trans-Neon Orange': '18',
+    'Trans-Orange': '98',
+    'Trans-Purple': '51',
+    'Trans-Red': '17',
+    'Trans-Yellow': '19',
+    'Very Light Bluish Gray': '99',
+    'White': '1',
+    'Yellow': '3',
+    'Yellowish Green': '158',
+    'n/a': '0'
+}
+
+unique_colors = set()
+
+
+csv_input = 'database.csv'  # Ваш входной файл
+csv_output = 'results_links.csv'  # Выходной файл с ссылками
+
+results = []
+results_dict = {}
+
+with open(csv_input, newline='', encoding='utf-8') as infile:
+    reader = csv.DictReader(infile)
+    for row in reader:
+        item_no = row['Item No']
+        color_name = row['Color']  # Предполагаем, что есть колонка 'Color'
+        color_number = color_dict.get(color_name, '0')  # по умолчанию 0, если нет в словаре
+        if color_name == 'n/a':
+            image_url = f"https://img.bricklink.com/ItemImage/IN/{color_number}/{item_no}.png"
+        else:
+            image_url = f"https://img.bricklink.com/ItemImage/PN/{color_number}/{item_no}.png"
+            print(f"Найдено изображение для {item_no} цвета {color_name}: {image_url}")
+        results.append({'Item No': item_no, 'Color': color_name, 'Image URL': image_url})
+        results_dict[item_no] = image_url
+
+# Записываем результат
+with open(csv_output, 'w', newline='', encoding='utf-8') as outfile:
+    writer = csv.DictWriter(outfile, fieldnames=['Item No', 'Color', 'Image URL'])
+    writer.writeheader()
+    writer.writerows(results)
 
 
 
@@ -611,20 +724,11 @@ def db_add():
 
         for row in rows:
             item_no = row.get('Item No', '').strip()
-
-            # Получение изображения по item_no
-            if item_no:
-                if item_no in image_cache:
-                    image_url = image_cache[item_no]
-                else:
-                    try:
-                        image_url = get_image_src_with_selenium(item_no)
-                        image_cache[item_no] = image_url
-                    except Exception as e:
-                        print(f"Ошибка при получении изображения для Item No {item_no}: {e}")
-                        image_url = None
-            else:
-                image_url = None
+            image_url = ''
+            for result in results:
+                if result['Item No'] == item_no:
+                    image_url = result['Image URL']
+                    break
 
             # Обработка категории
             category_name = row['Category'].strip()
@@ -746,7 +850,7 @@ def update_or_create(item_id):
             description=data.get('description'),
             price=data.get('price'),
             quantity=data.get('quantity'),
-            url=data.get('url') if data else get_image_src_with_selenium(item_no),
+            url=data.get('url') if data else results_dict.get(item_no, ''),
             category_id=category_obj.id if category_obj else None,
             remarks = data.get('remarks')
         )

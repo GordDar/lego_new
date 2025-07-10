@@ -51,5 +51,6 @@ Thumbs.db
 __pycache__/
 venv/
 .vscode/
+app_lego_bricks/
 
 google-account.json
