@@ -7,6 +7,7 @@ from functools import wraps
 
 from flask import Flask, request, jsonify, abort, g
 from flask_sqlalchemy import SQLAlchemy
+from flask_migrate import Migrate
 from flask_bcrypt import check_password_hash, generate_password_hash
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 from flask_cors import CORS
@@ -29,10 +30,12 @@ INSTANCE_CONNECTION_NAME = os.getenv("INSTANCE_CONNECTION_NAME")
 #     f"postgresql+psycopg2://{DB_USER}:{DB_PASS}@/"
 #     f"{DB_NAME}?host=/cloudsql/{INSTANCE_CONNECTION_NAME}"
 # )
-app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://postgres:postgres@db:5432/mydb'
+app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://postgres:postgres@db:5432/new_db'
 app.config['SECRET_KEY'] = 'very_secret_key'
 app.secret_key = 'very_secret_key'
 db = SQLAlchemy(app)
+migrate = Migrate()
+migrate.init_app(app, db)
 login_manager = LoginManager(app)
 CORS(app)
 
@@ -81,10 +84,12 @@ def get_catalog():
         query = query.filter(
             db.or_(
                 CatalogItem.color.ilike(search_term),
-                CatalogItem.description.ilike(search_term)
+                CatalogItem.description.ilike(search_term),
+                CatalogItem.item_no.ilike(search_term)
             )
         )
 
+    # TODO: check and potentially remove
     # Поиск по id товара
     if search_id:
         query = query.filter(CatalogItem.item_no.ilike(f"%{search_id}%"))
@@ -194,12 +199,12 @@ def submit_cart():
 
     # Проходим по товарам, чтобы посчитать сумму
     for item in items_data:
-        catalog_item_id = item['item_no']
+        catalog_item_number = item['item_no']
         quantity_requested = item.get('quantity', 1)
-        catalog_item = CatalogItem.query.get(catalog_item_id)
+        catalog_item = CatalogItem.query.filter_by(item_no=catalog_item_number).first()
 
         if not catalog_item:
-            return jsonify({'error': f'Item with id {catalog_item_id} not found'}), 404
+            return jsonify({'error': f'Item with item number {catalog_item_number} not found'}), 404
         if catalog_item.quantity < quantity_requested:
             return jsonify({
                 'error': f'Недостаточно товара "{catalog_item.description}". '
@@ -235,22 +240,24 @@ def submit_cart():
         total_price=total_price
     )
 
+    db.session.add(order)
+    db.session.flush()
+
     for item in items_data:
-        catalog_item_id = item['id']
+        catalog_item_number = item['item_no']
         quantity_requested = item.get('quantity', 1)
-        catalog_item = CatalogItem.query.get(catalog_item_id)
+        catalog_item = CatalogItem.query.filter_by(item_no=catalog_item_number).first()
 
         order_item = OrderItem(
+            order=order,
             catalog_item=catalog_item,
             quantity=quantity_requested
         )
         db.session.add(order_item)
-        order.order_items.append(order_item)
 
         # Обновляем количество на складе
         catalog_item.quantity -= quantity_requested
 
-    db.session.add(order)
     db.session.commit()
 
     # Отправляем письмо с заказом
@@ -318,7 +325,7 @@ def get_orders():
             
             items_list.append({
                 'item_no': getattr(catalog_item, 'item_no', None),
-                'url': item.url,
+                'url': getattr(catalog_item, 'url', None),
                 'color': getattr(catalog_item, 'color', None),
                 'quantity_in_order': item.quantity,
                 'unit_price': price_per_unit,
@@ -327,6 +334,7 @@ def get_orders():
             })
         
         orders_list.append({
+            'id': order.id,
             'customer_name': order.customer_name,
             'customer_telephone': order.customer_telephone,
             'customer_email': order.customer_email,
@@ -392,7 +400,12 @@ def create_initial_settings():
             )
             db.session.add(new_setting)
     db.session.commit()
-      
+
+@app.route('/settings', methods=['GET'])
+def get_settings():
+    settings = Settings.query.all()
+    result = {setting.settings_name: setting.settings_value for setting in settings}
+    return jsonify(result)
 
 @app.route('/admin/settings', methods=['POST'])
 @token_required
@@ -780,7 +793,7 @@ def presigned_url():
         return jsonify({'error': str(e)}), 500
 
 
-@app.route('/presigned_url', methods=['POST'])
+@app.route('/wanted_list', methods=['POST'])
 # --- 13. Загрузка wanted_list ---
 def parse_xml_from_gcs():
     data = request.get_json()
@@ -792,7 +805,7 @@ def parse_xml_from_gcs():
         # Проверка существования файла
         if not blob.exists():
             print(f"Файл {file_name} не найден в бакете {BUCKET_NAME}.")
-            return
+            return {'error_message': f"blob {file_name} was not found in the bucket"}
 
         # Получение содержимого файла как байтов
         xml_bytes = blob.download_as_bytes()
@@ -804,31 +817,53 @@ def parse_xml_from_gcs():
         soup = BeautifulSoup(xml_content, 'xml')
         items = soup.find_all('ITEM')
 
+        found_items = []
+        not_found_items = []
         for item in items:
             item_id_text = item.find('ITEMID').text
-            item_type = item.find('ITEMTYPE').text
-            color = item.find('COLOR').text
-            max_price_text = item.find('MAXPRICE').text
-            min_qty_text = item.find('MINQTY').text
-            condition = item.find('CONDITION').text
-            notify = item.find('NOTIFY').text
+            # item_type = item.find('ITEMTYPE').text
+            # color = item.find('COLOR').text
+            # max_price_text = item.find('MAXPRICE').text
+            # min_qty_text = item.find('MINQTY').text
+            # condition = item.find('CONDITION').text
+            # notify = item.find('NOTIFY').text
 
             # Преобразуем числовые значения
-            try:
-                max_price = float(max_price_text)
-                min_qty = int(min_qty_text)
-            except (ValueError, AttributeError):
-                print(f"Некорректные данные для ITEMID={item_id_text}")
-                continue
+            # try:
+            #     max_price = float(max_price_text)
+            #     min_qty = int(min_qty_text)
+            # except (ValueError, AttributeError):
+            #     print(f"Некорректные данные для ITEMID={item_id_text}")
+            #     continue
 
             existing_item = CatalogItem.query.filter_by(item_no=item_id_text).first()
 
             if existing_item:
+                found_items.append({
+                    'id': existing_item.id,
+                    'item_no': existing_item.item_no,
+                    'url': existing_item.url,
+                    'color': existing_item.color,
+                    'description': existing_item.description,
+                    'price': existing_item.price,
+                    'quantity': existing_item.quantity,
+                    'category_name': existing_item.category.name if existing_item.category else None,
+                    'remarks': existing_item.remarks
+                })
                 print(f"Найден товар: {existing_item}")            
             else:
+                not_found_items.append(item_id_text)
                 print(f"Товар с ITEMID={item_id_text} не найден в базе.")
+
+        return {
+            'found_items': found_items,
+            'not_found_items': not_found_items
+        }
     except Exception as e:
         print(f"Ошибка при получении файла из GCS: {e}")
+        return {
+            'error_message': f'{e}'
+        }, 400
 
 # вызов функции с именем файла в GCS
 # parse_xml_from_gcs('путь/к/вашему.xml')?????

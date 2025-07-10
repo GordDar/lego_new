@@ -13,6 +13,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Копируем все файлы проекта
 COPY . .
 
+# Копируем entrypoint и даем права
+COPY entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
+
 # Указываем переменные окружения
 ENV FLASK_APP=run.py
 ENV FLASK_RUN_HOST=0.0.0.0
@@ -21,5 +25,6 @@ ENV FLASK_ENV=production
 # Открываем порт
 EXPOSE 8080
 
-# Команда запуска
+## Используем entrypoint
+#ENTRYPOINT ["/app/entrypoint.sh"]
 CMD ["python", "-m", "flask", "run", "--port=8080"]
