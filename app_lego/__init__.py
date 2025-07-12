@@ -64,6 +64,95 @@ def token_required(f):
     return decorated
 
 
+
+
+color_dict = {
+    'Black': '11',
+    'Blue': '7',
+    'Bright Green': '36',
+    'Bright Light Blue': '105',
+    'Bright Light Orange': '110',
+    'Bright Light Yellow': '103',
+    'Bright Pink': '104',
+    'Brown': '8',
+    'Chrome Silver': '22',
+    'Coral': '220',
+    'Dark Azure': '153',
+    'Dark Blue': '63',
+    'Dark Bluish Gray': '85',
+    'Dark Brown': '120',
+    'Dark Gray': '10',
+    'Dark Green': '80',
+    'Dark Orange': '68',
+    'Dark Pink': '47',
+    'Dark Purple': '89',
+    'Dark Red': '59',
+    'Dark Tan': '69',
+    'Dark Turquoise': '39',
+    'Flat Dark Gold': '81',
+    'Flat Silver': '95',
+    'Glitter Trans-Clear': '101',
+    'Glitter Trans-Light Blue': '162',
+    'Glitter Trans-Purple': '102',
+    'Green': '6',
+    'Lavender': '154',
+    'Light Aqua': '152',
+    'Light Bluish Gray': '86',
+    'Light Brown': '91',
+    'Light Gray': '9',
+    'Light Nougat': '90',
+    'Lime': '34',
+    'Maersk Blue': '72',
+    'Magenta': '71',
+    'Medium Azure': '156',
+    'Medium Blue': '42',
+    'Medium Lavender': '157',
+    'Medium Nougat': '150',
+    'Medium Orange': '31',
+    'Metallic Copper': '250',
+    'Metallic Gold': '65',
+    'Metallic Silver': '67',
+    'Nougat': '28',
+    'Olive Green': '155',
+    'Orange': '4',
+    'Pearl Dark Gray': '77',
+    'Pearl Gold': '115',
+    'Pearl Light Gray': '66',
+    'Red': '5',
+    'Reddish Brown': '88',
+    'Reddish Copper': '249',
+    'Sand Blue': '55',
+    'Sand Green': '48',
+    'Satin Trans-Light Blue': '229',
+    'Tan': '2',
+    'Trans-Black': '251',
+    'Trans-Bright Green': '108',
+    'Trans-Brown': '13',
+    'Trans-Clear': '12',
+    'Trans-Dark Blue': '14',
+    'Trans-Dark Pink': '50',
+    'Trans-Green': '20',
+    'Trans-Light Blue': '15',
+    'Trans-Light Purple': '114',
+    'Trans-Medium Blue': '74',
+    'Trans-Neon Green': '16',
+    'Trans-Neon Orange': '18',
+    'Trans-Orange': '98',
+    'Trans-Purple': '51',
+    'Trans-Red': '17',
+    'Trans-Yellow': '19',
+    'Very Light Bluish Gray': '99',
+    'White': '1',
+    'Yellow': '3',
+    'Yellowish Green': '158',
+    'n/a': '0'
+}
+
+
+
+
+
+
 # --- 1. Каталог (GET /catalog) ---
 @app.route('/catalog', methods=['GET'])
 def get_catalog():
@@ -131,10 +220,21 @@ def get_catalog():
         'current_page': pagination.page
     })
 
+
+
+
+
+
+
+
 # --- 2. Отправка корзины (POST /cart) ---
 import smtplib
+import logging
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+
+
+logging.basicConfig(level=logging.INFO)
 
 # ?????
 SMTP_SERVER = 'smtp.yandex.ru'
@@ -142,21 +242,20 @@ SMTP_PORT = 587
 EMAIL_ADDRESS = 'legostorage@yandex.ru'  # ваш email
 EMAIL_PASSWORD = 'lego_storage_password' # ваш пароль
 
-# Данные на почту
 def send_order_email(order, order_details):
     subject = f"Новый заказ #{order.id}"
     to_email = 'legobricks2025@gmail.com'
     
-    # Формируем тело письма
-    body = f"Новый заказ №{order.id}\n"
-    body += f"Дата: {order.created_at}\n"
-    body += f"Клиент: {order.customer_name}\n"
-    body += f"Телефон: {order.customer_telephone}\n"
-    body += f"Почта: {order.customer_email}\n"
-    body += f"Доставка: {'Да' if order.dostavka else 'Нет'}\n"
-    body += f"Время создания заказа: {order.created_at}\n"
-    body += f"Общая сумма: {order.total_price}\n\n"
-    body += "Позиции заказа:\n"
+    body = (
+        f"Новый заказ №{order.id}\n"
+        f"Дата: {order.created_at}\n"
+        f"Клиент: {order.customer_name}\n"
+        f"Телефон: {order.customer_telephone}\n"
+        f"Почта: {order.customer_email}\n"
+        f"Доставка: {'Да' if order.dostavka else 'Нет'}\n"
+        f"Общая сумма: {order.total_price}\n\n"
+        "Позиции заказа:\n"
+    )
     
     for item in order_details:
         body += (
@@ -166,54 +265,61 @@ def send_order_email(order, order_details):
             f"Итого: {item['total_price']}\n"
         )
     
-    # Создаем сообщение
     msg = MIMEText(body, 'plain', 'utf-8')
     msg['Subject'] = subject
     msg['From'] = EMAIL_ADDRESS
     msg['To'] = to_email
     
-    # Отправка письма через SMTP
     try:
         with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
             server.starttls()
             server.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
             server.send_message(msg)
-        print("Email успешно отправлен")
+        logging.info("Email успешно отправлен")
     except Exception as e:
-        print(f"Ошибка при отправке email: {e}")
+        logging.error(f"Ошибка при отправке email: {e}")
 
 @app.route('/cart', methods=['POST'])
 def submit_cart():
-    data = request.json
+    data = request.get_json()
+    
     items_data = data.get('items')
     customer_name = data.get('customer_name')
     customer_telephone = data.get('customer_telephone')
     customer_email = data.get('customer_email')
     dostavka = data.get('dostavka', False)
 
+    # Проверка обязательных полей
     if not items_data or not customer_name or not customer_telephone:
         return jsonify({'error': 'Missing required fields'}), 400
 
     order_details_for_email = []
-    total_price = 0  # Инициализация суммы заказа
+    total_price = 0
 
-    # Проходим по товарам, чтобы посчитать сумму
+    # Предварительно ищем все CatalogItem один раз для повышения эффективности
+    catalog_items_cache = {}
+    
     for item in items_data:
         catalog_item_number = item['item_no']
         quantity_requested = item.get('quantity', 1)
-        catalog_item = CatalogItem.query.filter_by(item_no=catalog_item_number).first()
-
-        if not catalog_item:
-            return jsonify({'error': f'Item with item number {catalog_item_number} not found'}), 404
+        
+        if catalog_item_number not in catalog_items_cache:
+            catalog_item = CatalogItem.query.filter_by(item_no=catalog_item_number).first()
+            if not catalog_item:
+                return jsonify({'error': f'Item with item number {catalog_item_number} не найден'}), 404
+            catalog_items_cache[catalog_item_number] = catalog_item
+        else:
+            catalog_item = catalog_items_cache[catalog_item_number]
+        
         if catalog_item.quantity < quantity_requested:
             return jsonify({
                 'error': f'Недостаточно товара "{catalog_item.description}". '
                          f'Доступно: {catalog_item.quantity}, запрошено: {quantity_requested}'
             }), 400
-
+        
         price_per_unit = getattr(catalog_item, 'price', 0)
-        total_price += price_per_unit * quantity_requested  # Добавляем к общей сумме
-
+        total_price += price_per_unit * quantity_requested
+        
         # Собираем данные для email
         order_details_for_email.append({
             'description': catalog_item.description,
@@ -222,48 +328,143 @@ def submit_cart():
             'total_price': price_per_unit * quantity_requested
         })
 
-    # Проверка минимальной суммы заказа
+    # Проверка минимальной суммы заказа (если есть)
     settings = Settings.query.filter_by(settings_name='min').first()
-    if settings and settings.settings_value is not None:
-        if total_price < settings.settings_value:
-            return jsonify({
-                'error': f'Минимальная сумма заказа составляет {settings.settings_value}. '
-                         f'Ваш заказ на сумму {total_price} не может быть принят.'
-            }), 400
+    min_order_value = settings.settings_value if settings else None
+    
+    if min_order_value is not None and total_price < min_order_value:
+        return jsonify({
+            'error': f'Минимальная сумма заказа составляет {min_order_value}. '
+                     f'Ваш заказ на сумму {total_price} не может быть принят.'
+        }), 400
 
-    # Создаем заказ с рассчитанной суммой
-    order = Order(
-        customer_name=customer_name,
-        customer_telephone=customer_telephone,
-        customer_email= customer_email,
-        dostavka=dostavka,
-        total_price=total_price
-    )
+    from datetime import datetime
 
-    db.session.add(order)
-    db.session.flush()
+    try:
+        # Используем транзакцию для атомарности операции
+        with db.session.begin():
+            order = Order(
+                customer_name=customer_name,
+                customer_telephone=customer_telephone,
+                customer_email=customer_email,
+                dostavka=dostavka,
+                total_price=total_price,
+                created_at=datetime.utcnow()
+            )
+            db.session.add(order)
+            db.session.flush()  # чтобы получить id заказа
+            
+            for item in items_data:
+                catalog_item_number = item['item_no']
+                quantity_requested = item.get('quantity', 1)
+                catalog_item = catalog_items_cache[catalog_item_number]
+                
+                order_item = OrderItem(
+                    order=order,
+                    catalog_item=catalog_item,
+                    quantity=quantity_requested
+                )
+                db.session.add(order_item)
+                
+                # Обновляем количество на складе
+                catalog_item.quantity -= quantity_requested
+            
+            db.session.commit()
 
+        # Отправляем письмо после успешной транзакции
+        send_order_email(order, order_details_for_email)
+
+        return jsonify({'message': 'Order created', 'order_id': order.id})
+    
+    except Exception as e:
+        db.session.rollback()
+        logging.exception("Ошибка при создании заказа")
+        return jsonify({'error': 'Ошибка при обработке заказа'}), 500
+
+
+
+
+# --- 2.1   Обработка скачивания wanted list ---
+
+import xml.etree.ElementTree as ET
+import tempfile
+
+def determine_item_type(item_no):
+    catalog_item = CatalogItem.query.filter_by(item_no=item_no).first()   
+    category_id = catalog_item.get('category_id')
+    category_name = Category.query.filter_by(id=category_id).first()
+    
+    category_name_lower = category_name.lower()
+    
+    if category_name_lower.startswith('instructions'):
+        return 'I'
+    elif category_name_lower.startswith('parts'):
+        return 'P'
+    elif category_name_lower.startswith('minifigures'):
+        return 'M'
+    else:
+        return 'P' 
+
+def create_inventory_xml(items_data, color_dict):
+    INVENTORY = ET.Element('INVENTORY')
+    
     for item in items_data:
-        catalog_item_number = item['item_no']
-        quantity_requested = item.get('quantity', 1)
-        catalog_item = CatalogItem.query.filter_by(item_no=catalog_item_number).first()
+        item_elem = ET.SubElement(INVENTORY, 'ITEM')
+        
+        item_no = item.get('item_no')
+        
+        item_type = determine_item_type(item_no)
+        
+        color_name = item.get('color_name')
+        color_code_value = ''
+        
+        if color_name and color_name in color_dict:
+            color_code_value = color_dict[color_name]
+        
+        ET.SubElement(item_elem, 'ITEMTYPE').text = item_type
+        ET.SubElement(item_elem, 'ITEMID').text = str(item_no)
+        
+        if color_code_value:
+            ET.SubElement(item_elem, 'COLOR').text = str(color_code_value)
+        
+        ET.SubElement(item_elem, 'MAXPRICE').text = '-1.0000'
+        ET.SubElement(item_elem, 'MINQTY').text = str(item.get('quantity', 1))
+        ET.SubElement(item_elem, 'CONDITION').text = 'X'
+        ET.SubElement(item_elem, 'NOTIFY').text = 'N'
+    
+    return INVENTORY
 
-        order_item = OrderItem(
-            order=order,
-            catalog_item=catalog_item,
-            quantity=quantity_requested
-        )
-        db.session.add(order_item)
+def save_xml_to_file(xml_element):
+    with tempfile.NamedTemporaryFile(delete=False, suffix='.xml') as tmp_file:
+        tree = ET.ElementTree(xml_element)
+        tree.write(tmp_file.name, encoding='utf-8', xml_declaration=True)
+        return tmp_file.name
 
-        # Обновляем количество на складе
-        catalog_item.quantity -= quantity_requested
 
-    db.session.commit()
 
-    # Отправляем письмо с заказом
-    send_order_email(order, order_details_for_email)
+@app.route('/save_as_wanted_list', methods=['POST'])
+def handle_save_as_wanted_list():
+    data = request.get_json()
+    
+    items_data = data.get('items')
+    
+    if not items_data:
+       return jsonify({'error': 'Нет данных товаров'}), 400
+    
+    try:
+       xml_element= create_inventory_xml(items_data=items_data, color_dict=color_dict)
+       xml_filename= save_xml_to_file(xml_element)
+       return jsonify({'status': 'success', 'file_path': xml_filename}), 200
+    
+    except Exception as e:
+       logging.exception("Ошибка при создании XML")
+       return jsonify({'error':'Ошибка при создании файла'}),500
 
-    return jsonify({'message': 'Order created', 'order_id': order.id})
+
+
+
+
+
 
 # --- 3. Логин для админки (POST /admin/login) ---
 @app.route('/admin/login', methods=['POST'])
@@ -282,6 +483,12 @@ def admin_login():
 def admin_logout():
     logout_user()
     return {}
+
+
+
+
+
+
 
 # --- 4. Просмотр заказов в админке (GET /admin/orders) ---
 @app.route('/admin/orders', methods=['GET'])
@@ -358,6 +565,10 @@ def get_orders():
     })
     
     
+    
+    
+    
+    
 # --- 4.1. Удаление выполненных заказов в админке (DELETE /admin/orders/{order_id}) --- 
 @app.route('/admin/orders/<int:order_id>', methods=['DELETE'])
 @token_required
@@ -379,6 +590,10 @@ def delete_order(order_id):
     except Exception as e:
         db.session.rollback()
         return jsonify({'error': 'Failed to delete order', 'details': str(e)}), 500
+
+
+
+
 
 
 # --- 5. Установка курса валют в админке (POST /admin/set_currency) ---
@@ -448,6 +663,10 @@ def update_settings():
 
 
 
+
+
+
+
 # --- 6. Структура категорий ---
 def build_nested_structure(categories):
     structure = {}
@@ -472,32 +691,39 @@ def get_category_structure():
 
 
 
+
+
+
+
 # --- 7. Просмотр одного заказа из админки ---
-@app.route('/admin/orders/<int:order_id>', methods=['GET'])
-def get_order(order_id):
-    order = Order.query.filter(Order.id == order_id).first()
-    if not order:
-        abort(404, description="Order not found")
-    
+def get_order_items_list(order):
     items_list = []
-
-
     for item in order.order_items:
         catalog_item = item.catalog_item
         price_per_unit = catalog_item.price if catalog_item else 0
-        quantity = item.quantity
+        quantity_in_order = item.quantity
 
         items_list.append({
             'item_no': catalog_item.item_no,
             'url': catalog_item.url,
             'color': catalog_item.color,
             'description': catalog_item.description,
-            'quantity_in_order': quantity,
+            'quantity_in_order': quantity_in_order,
             'unit_price': price_per_unit,
-            'total_price': quantity*price_per_unit,
+            'total_price': quantity_in_order * price_per_unit,
             "remarks": catalog_item.remarks,
             "quantity": catalog_item.quantity
         })
+    return items_list
+
+
+@app.route('/admin/orders/<int:order_id>', methods=['GET'])
+def get_order(order_id):
+    order = Order.query.filter(Order.id == order_id).first()
+    if not order:
+        abort(404, description="Order not found")
+    
+    items_list = get_order_items_list(order)
 
     response_data = {
         "id": order.id,
@@ -510,6 +736,61 @@ def get_order(order_id):
     }
 
     return jsonify(response_data)
+
+
+
+
+# --- 7.1 Скачать один заказ как wanted list ---
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from email.mime.base import MIMEBase
+from email import encoders
+
+
+def send_email_with_attachment(subject, body_text, filename):
+    msg = MIMEMultipart()
+    msg['Subject'] = subject
+    msg['From'] = EMAIL_ADDRESS
+    msg['To'] = 'legobricks2025@gmail.com'
+
+    msg.attach(MIMEText(body_text, 'plain', 'utf-8'))
+
+    with open(filename, 'rb') as f:
+        part = MIMEBase('application', 'xml')
+        part.set_payload(f.read())
+        encoders.encode_base64(part)
+        part.add_header('Content-Disposition', f'attachment; filename="{filename.split("/")[-1]}"')
+        msg.attach(part)
+
+    try:
+        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+            server.starttls()
+            server.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
+            server.send_message(msg)
+        print("Письмо успешно отправлено")
+    except Exception as e:
+        print(f"Ошибка при отправке: {e}")
+
+
+
+@app.route('/save_<int:order_id>', methods=['POST', 'GET'])
+def save_order_as_wanted_list(order_id):
+    order = Order.query.filter(Order.id == order_id).first()
+    if not order:
+        abort(404, description="Order not found")
+    
+    items_list = get_order_items_list(order)
+
+    xml_element = create_inventory_xml(items_data=items_list, color_dict=color_dict)
+    
+    xml_filename = save_xml_to_file(xml_element)
+    
+    body_text = f'Здравствуйте,\n\nПрикреплен XML-файл с информацией о товарах заказа.\n\nНомер заказа: {order_id}'
+    
+    send_email_with_attachment('Заказ - информация о товарах', body_text, xml_filename)
+    
+    return {'status': 'success'}, 200
+
 
 
 
