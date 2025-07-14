@@ -44,7 +44,7 @@ storage_client = storage.Client()  # Предполагается, что нас
 BUCKET_NAME = 'bucket-wanted-lists_lego-bricks-app'
 
 
-from app_lego.models import Order, CatalogItem, Category, AdminUser, Settings, OrderItem
+from app_lego.models import Order, CatalogItem, Category, AdminUser, Settings, OrderItem, Images, MoreId
 
 
 def token_required(f):
@@ -154,11 +154,15 @@ color_dict = {
 
 
 # --- 1. Каталог (GET /catalog) ---
+from sqlalchemy import or_
+
+
 @app.route('/catalog', methods=['GET'])
 def get_catalog():
     search = request.args.get('search', '', type=str)
     search_category = request.args.get('category', '', type=str)
     search_id = request.args.get('search_id', '', type=int)
+    search_old_id = request.args.get('search_old_id', '', type=int)
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 20, type=int)
 
@@ -170,18 +174,43 @@ def get_catalog():
     # Поиск по общим полям
     if search:
         search_term = f"%{search}%"
-        query = query.filter(
-            db.or_(
-                CatalogItem.color.ilike(search_term),
-                CatalogItem.description.ilike(search_term),
-                CatalogItem.item_no.ilike(search_term)
+        # Пытаемся найти запись в MoreId по old_id
+        more_id_record = db.session.query(MoreId).filter(MoreId.old_id.ilike(search_term)).first()
+
+        if more_id_record:
+            # Предположим, что в поле ids у вас строка с запятыми
+            ids_str = more_id_record.ids.strip()
+            # Разделяем строку на список идентификаторов
+            ids_list = [id_part.strip() for id_part in ids_str.split(',')]
+            # Фильтруем товары по item_no из списка
+            query = query.filter(CatalogItem.item_no.in_(ids_list))
+        else:
+            # Если ничего не найдено, ищем по другим полям
+            query = query.filter(
+                or_(
+                    CatalogItem.color.ilike(search_term),
+                    CatalogItem.description.ilike(search_term),
+                    CatalogItem.item_no.ilike(search_term)
+                )
             )
-        )
+            
 
     # TODO: check and potentially remove
     # Поиск по id товара
-    if search_id:
-        query = query.filter(CatalogItem.item_no.ilike(f"%{search_id}%"))
+    # if search_id:
+    #     query = query.filter(CatalogItem.item_no.ilike(f"%{search_id}%"))
+    
+    # if search_old_id:
+    #     # Получаем запись из MoreId по old_id
+    #     more_id_record = db.session.query(MoreId).filter(MoreId.old_id == search_old_id).first()
+    #     if more_id_record:
+    #         # Предполагаем, что ids — строка с разделителями
+    #         ids_list = [id_str.strip() for id_str in more_id_record.ids.split(',')]
+    #         # Фильтрация товаров по item_no из ids_list
+    #         query = query.filter(CatalogItem.item_no.in_(ids_list))
+    #     else:
+    #         # Если ничего не найдено, делаем запрос, который вернет пустой результат
+    #         query = query.filter(False)
 
     # Поиск по названию категории
     if search_category:
@@ -693,6 +722,22 @@ def get_category_structure():
 
 
 
+# --- 6.1 Структура категорий Part---
+def build_subcategories_list(categories):
+    subcategories = set()
+    for category in categories:
+        parts = [part.strip() for part in category.name.split('/')]
+        subcategories.add(parts[-1])
+    return list(subcategories)
+
+@app.get("/category-parts")
+def get_category_structure():
+    categories = Category.query.all()
+    subcategories_list = build_subcategories_list(categories)
+    return jsonify(subcategories_list)
+
+
+
 
 
 # --- 7. Просмотр одного заказа из админки ---
@@ -822,6 +867,18 @@ def str_to_bool(s):
 
 
 # --- 9. Создание базы данных ---
+
+
+import csv
+from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from webdriver_manager.chrome import ChromeDriverManager
+
+
+
 def get_or_create(session: Session, model, defaults=None, **kwargs):
     instance = session.query(model).filter_by(**kwargs).first()
     if instance:
@@ -840,29 +897,6 @@ def get_or_create(session: Session, model, defaults=None, **kwargs):
             return session.query(model).filter_by(**kwargs).first(), False
         
         
-# from selenium import webdriver
-# from selenium.webdriver.chrome.service import Service
-# from selenium.webdriver.common.by import By
-# from selenium.webdriver.support.ui import WebDriverWait
-# from selenium.webdriver.support import expected_conditions as EC
-# from webdriver_manager.chrome import ChromeDriverManager
-
-# def get_image_src_with_selenium(item_no):
-#     url = f'https://www.bricklink.com/v2/catalog/catalogitem.page?P={item_no}'
-#     options = webdriver.ChromeOptions()
-#     options.add_argument('--headless')  # запуск без графического интерфейса
-
-#     driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
-    
-#     try:
-#         driver.get(url)
-#         wait = WebDriverWait(driver, 10)
-#         img = wait.until(EC.presence_of_element_located((By.ID, '_idImageMain')))
-#         src = img.get_attribute('src')
-#         return src
-#     finally:
-#         driver.quit()
-
 
 
 color_dict = {
@@ -947,34 +981,41 @@ color_dict = {
     'n/a': '0'
 }
 
-unique_colors = set()
-
-
-csv_input = 'database.csv'  # Ваш входной файл
-csv_output = 'results_links.csv'  # Выходной файл с ссылками
 
 results = []
 results_dict = {}
+    
 
-with open(csv_input, newline='', encoding='utf-8') as infile:
-    reader = csv.DictReader(infile)
-    for row in reader:
-        item_no = row['Item No']
-        color_name = row['Color']  # Предполагаем, что есть колонка 'Color'
-        color_number = color_dict.get(color_name, '0')  # по умолчанию 0, если нет в словаре
-        if color_name == 'n/a':
-            image_url = f"https://img.bricklink.com/ItemImage/IN/{color_number}/{item_no}.png"
-        else:
-            image_url = f"https://img.bricklink.com/ItemImage/PN/{color_number}/{item_no}.png"
-            print(f"Найдено изображение для {item_no} цвета {color_name}: {image_url}")
-        results.append({'Item No': item_no, 'Color': color_name, 'Image URL': image_url})
-        results_dict[item_no] = image_url
+def get_old_id_for_item(driver, item_no):
+    url = f'https://www.bricklink.com/v2/catalog/catalogitem.page?P={item_no}'
+    try:
+        driver.get(url)
+        wait = WebDriverWait(driver, 15)
+        # Ждем появления блока с нужным id
+        div_main = wait.until(EC.presence_of_element_located((By.ID, 'id_divBlock_Main')))
+        # Находим первый <span> внутри этого блока
+        span_element = div_main.find_element(By.TAG_NAME, 'span')
+        text = span_element.text.strip()
 
-# Записываем результат
-with open(csv_output, 'w', newline='', encoding='utf-8') as outfile:
-    writer = csv.DictWriter(outfile, fieldnames=['Item No', 'Color', 'Image URL'])
-    writer.writeheader()
-    writer.writerows(results)
+        marker = 'Alternate Item No:'
+        if marker in text:
+            parts = text.split(marker, 1)
+            if len(parts) > 1:
+                return parts[1].strip()
+        return None
+    except Exception as e:
+        print(f"Ошибка при обработке item_no={item_no}: {e}")
+        return None
+
+# Настройка драйвера
+options = webdriver.ChromeOptions()
+options.add_argument('--headless')  # запуск без интерфейса
+driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
+
+results_id = {}
+single_id_results = []
+
+
 
 
 
@@ -1006,10 +1047,51 @@ def db_add():
         for row in rows:
             item_no = row.get('Item No', '').strip()
             image_url = ''
-            for result in results:
-                if result['Item No'] == item_no:
-                    image_url = result['Image URL']
-                    break
+            color_name = row['Color']  
+            color_number = color_dict.get(color_name, '0')  
+            if color_name == 'n/a':
+                image_url = f"https://img.bricklink.com/ItemImage/IN/{color_number}/{item_no}.png"
+            else:        
+                image_url = f"https://img.bricklink.com/ItemImage/PN/{color_number}/{item_no}.png"
+                
+            results.append({'Item No': item_no, 'Color': color_name, 'Image URL': image_url})
+            results_dict[item_no] = image_url
+
+            # Создаем новую запись в таблице Images
+            new_image = Images(
+                ids=item_no,
+                color=color_name,
+                image_url=image_url
+            )
+            db.session.add(new_image)
+            
+            
+            if item_no in results_id:
+                continue
+
+            old_id_result = get_old_id_for_item(driver, item_no)
+            if old_id_result:
+                # Разделяем по запятой и очищаем пробелы
+                ids = [id_str.strip() for id_str in old_id_result.split(',')]
+                results_id[item_no] = ids
+            else:
+                results_id[item_no] = []
+
+            for item_no, ids_list in results_id.items():
+                if ids_list:
+                    for id_value in ids_list:
+                        single_id_results.append({'Item No': item_no, 'Old ID': id_value})
+                else:
+                    # Если ID отсутствует, добавим запись с None или 'Нет данных'
+                    single_id_results.append({'Item No': item_no, 'Old ID': None})
+
+            # Теперь можно вывести или сохранить этот список
+            for entry in single_id_results:
+                new_record = MoreId(
+                    ids=entry['Item No'], 
+                    old_id=entry['Old ID']
+                    )
+                db.session.add(new_record)
 
             # Обработка категории
             category_name = row['Category'].strip()
@@ -1055,6 +1137,8 @@ def db_add():
     except Exception as e:
         db.session.rollback()
         return jsonify({"status": "error", "message": str(e)}), 500
+    finally:
+        driver.quit()
     return 'Success', 200
 
 

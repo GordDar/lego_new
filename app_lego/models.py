@@ -132,7 +132,15 @@ class CatalogItem(db.Model):
     
     
 class Images(db.Model):
+    __tablename__ = 'images'
     id = db.Column(db.Integer, primary_key=True)
     ids = db.Column(db.String(30))
+    color = db.Column(db.String(255)) 
     image_url = db.Column(db.String(255))  
+    
+    
+class MoreId(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    ids = db.Column(db.String(30))
+    old_id = db.Column(db.String(30))
 
