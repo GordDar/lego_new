@@ -790,7 +790,7 @@ def build_subcategories_list(categories):
     return list(subcategories)
 
 @app.get("/category-parts")
-def get_category_structure():
+def get_category_structure_parts():
     categories = Category.query.all()
     subcategories_list = build_subcategories_list(categories)
     return jsonify(subcategories_list)
@@ -1069,9 +1069,17 @@ def get_old_id_for_item(driver, item_no):
         return None
 
 # Настройка драйвера
-options = webdriver.ChromeOptions()
-options.add_argument('--headless')  # запуск без интерфейса
-driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
+from selenium.webdriver.chrome.options import Options
+
+options = Options()
+options.binary_location = "/usr/bin/chromium"
+options.add_argument("--headless")
+options.add_argument("--no-sandbox")
+options.add_argument("--disable-dev-shm-usage")
+
+service = Service("/usr/bin/chromedriver")
+
+driver = webdriver.Chrome(service=service, options=options)
 
 results_id = {}
 single_id_results = []
