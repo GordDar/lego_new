@@ -11,3 +11,6 @@ google-cloud-storage
 selenium
 webdriver_manager
 flask-migrate
+
+fpdf
+fastapi

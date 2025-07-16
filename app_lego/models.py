@@ -3,6 +3,21 @@ from datetime import datetime
 from app_lego import db, login_manager
 from datetime import datetime
 
+
+from sqlalchemy.ext.declarative import declarative_base
+
+Base = declarative_base()
+
+class TaskStatus(Base):
+    __tablename__ = 'task_status'
+    id = db.Column(db.Integer, primary_key=True)
+    task_id = db.Column(db.String, unique=True)
+    status = db.Column(db.String)  # например: 'pending', 'processing', 'completed', 'error'
+    message = db.Column(db.String)  # optional: описание или сообщение об ошибке
+
+
+
+
 # Таблица связи "многие ко многим" с дополнительными полями
 class OrderItem(db.Model):
     __tablename__ = 'order_items'
