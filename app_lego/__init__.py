@@ -161,14 +161,17 @@ from sqlalchemy import or_
 def get_catalog():
     search = request.args.get('search', '', type=str)
     search_category = request.args.get('category', '', type=str)
-    search_id = request.args.get('search_id', '', type=int)
-    search_old_id = request.args.get('search_old_id', '', type=int)
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 20, type=int)
 
     query = CatalogItem.query
+    
+    query = (db.session.query(CatalogItem)
+    .join(CatalogItem.category)
+    .filter(Category.name.startswith("Parts"))
+)
 
-    # Добавляем фильтр для исключения товаров с количеством 0
+# Получение результатов
     query = query.filter(CatalogItem.quantity > 0)
 
     # Поиск по общим полям
@@ -782,17 +785,23 @@ def get_category_structure():
 
 
 # --- 6.1 Структура категорий Part---
-def build_subcategories_list(categories):
-    subcategories = set()
+def get_parts_subcategories(categories):
+    parts_subcategories = {}
     for category in categories:
         parts = [part.strip() for part in category.name.split('/')]
-        subcategories.add(parts[-1])
-    return list(subcategories)
+        if parts[0] == "Parts":
+            current_level = parts[1:]  # все после "Parts"
+            current_dict = parts_subcategories
+            for part in current_level:
+                if part not in current_dict:
+                    current_dict[part] = {}
+                current_dict = current_dict[part]
+    return parts_subcategories
 
 @app.get("/category-parts")
 def get_category_structure_parts():
     categories = Category.query.all()
-    subcategories_list = build_subcategories_list(categories)
+    subcategories_list = get_parts_subcategories(categories)
     return jsonify(subcategories_list)
 
 
@@ -936,6 +945,12 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
+
+
+service = Service('/usr/local/bin/chromedriver')  # путь к chromedriver
+options = webdriver.ChromeOptions()
+options.add_argument('--headless')  # запуск в headless-режиме
+driver = webdriver.Chrome(service=service, options=options)
 
 
 
