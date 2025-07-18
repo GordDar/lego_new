@@ -941,13 +941,6 @@ from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
 
 
-service = Service('/usr/local/bin/chromedriver')  # путь к chromedriver
-options = webdriver.ChromeOptions()
-options.add_argument('--headless')  # запуск в headless-режиме
-driver = webdriver.Chrome(service=service, options=options)
-
-
-
 
 def get_or_create(session: Session, model, defaults=None, **kwargs):
     instance = session.query(model).filter_by(**kwargs).first()
@@ -1287,9 +1280,9 @@ import threading
 
 @app.route("/db_add", methods=["GET", "POST"])
 def db_add():
-    file_name = request.args.get('file_name')
+    file_name = request.args.get('database')
     if not file_name:
-        return jsonify({"error": "file_name обязательное поле"}), 400
+        return jsonify({"error": "file_name not found"}), 400
 
     raw_csv = request.data.decode('utf-8')
     if not raw_csv:
@@ -1445,6 +1438,8 @@ def presigned_url():
 
 
 @app.route('/wanted_list', methods=['POST'])
+
+
 # --- 13. Загрузка wanted_list ---
 def parse_xml_from_gcs():
     data = request.get_json()
