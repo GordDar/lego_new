@@ -165,11 +165,6 @@ def get_catalog():
     per_page = request.args.get('per_page', 20, type=int)
 
     query = CatalogItem.query
-    
-    query = (db.session.query(CatalogItem)
-    .join(CatalogItem.category)
-    .filter(Category.name.like("Parts%"))
-)
 
     # Добавляем фильтр для исключения товаров с количеством 0
     query = query.filter(CatalogItem.quantity > 0)
@@ -944,6 +939,12 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
+
+
+service = Service('/usr/local/bin/chromedriver')  # путь к chromedriver
+options = webdriver.ChromeOptions()
+options.add_argument('--headless')  # запуск в headless-режиме
+driver = webdriver.Chrome(service=service, options=options)
 
 
 
