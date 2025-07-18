@@ -6,11 +6,11 @@ flask-login
 flask-cors
 psycopg2-binary
 bs4
+flask[async]
 lxml
 google-cloud-storage
 selenium
 webdriver_manager
 flask-migrate
-
 fpdf
 fastapi

@@ -161,12 +161,15 @@ from sqlalchemy import or_
 def get_catalog():
     search = request.args.get('search', '', type=str)
     search_category = request.args.get('category', '', type=str)
-    search_id = request.args.get('search_id', '', type=int)
-    search_old_id = request.args.get('search_old_id', '', type=int)
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 20, type=int)
 
     query = CatalogItem.query
+    
+    query = (db.session.query(CatalogItem)
+    .join(CatalogItem.category)
+    .filter(Category.name.like("Parts%"))
+)
 
     # Добавляем фильтр для исключения товаров с количеством 0
     query = query.filter(CatalogItem.quantity > 0)
@@ -782,19 +785,24 @@ def get_category_structure():
 
 
 # --- 6.1 Структура категорий Part---
-def build_subcategories_list(categories):
-    subcategories = set()
+def get_parts_subcategories(categories):
+    parts_subcategories = {}
     for category in categories:
         parts = [part.strip() for part in category.name.split('/')]
-        subcategories.add(parts[-1])
-    return list(subcategories)
+        if parts[0] == "Parts":
+            current_level = parts[1:]  # все после "Parts"
+            current_dict = parts_subcategories
+            for part in current_level:
+                if part not in current_dict:
+                    current_dict[part] = {}
+                current_dict = current_dict[part]
+    return parts_subcategories
 
 @app.get("/category-parts")
 def get_category_structure_parts():
     categories = Category.query.all()
-    subcategories_list = build_subcategories_list(categories)
+    subcategories_list = get_parts_subcategories(categories)
     return jsonify(subcategories_list)
-
 
 
 
@@ -1256,25 +1264,47 @@ def process_db_add(file_name: str, task_id: str):
 
 
 
-@app.post('/db_add')
-async def db_add_endpoint(request: Request, background_tasks: BackgroundTasks):
-    data = await request.json()
-    file_name = data.get('file_name')
+# @app.route("/db_add", methods=["GET", "POST"])
+# async def db_add_endpoint(request: Request, background_tasks: BackgroundTasks):
+#     data = await request.json()
+#     file_name = data.get('file_name')
     
-    if not file_name:
-        return JSONResponse(status_code=400, content={"error": "file_name обязательное поле"})
+#     if not file_name:
+#         return JSONResponse(status_code=400, content={"error": "file_name обязательное поле"})
 
+#     # Создаем уникальный ID задачи
+#     task_id = str(uuid.uuid4())
+
+#     # Создаем запись о задаче со статусом "pending"
+#     create_task_status(task_id=task_id, status='pending', message='Задача создана')
+
+#     # Запускаем фоновую задачу с передачей task_id
+#     background_tasks.add_task(process_db_add, file_name, task_id)
+
+#     return {"task_id": task_id}
+import threading
+
+@app.route("/db_add", methods=["GET", "POST"])
+def db_add():
+    file_name = request.args.get('file_name')
+    if not file_name:
+        return jsonify({"error": "file_name обязательное поле"}), 400
+
+    raw_csv = request.data.decode('utf-8')
+    if not raw_csv:
+        return jsonify({"error": "Нет данных"}), 400
+    
     # Создаем уникальный ID задачи
     task_id = str(uuid.uuid4())
 
     # Создаем запись о задаче со статусом "pending"
     create_task_status(task_id=task_id, status='pending', message='Задача создана')
 
-    # Запускаем фоновую задачу с передачей task_id
-    background_tasks.add_task(process_db_add, file_name, task_id)
+    # Запускаем фоновую задачу в отдельном потоке
+    thread = threading.Thread(target=process_db_add, args=(file_name, task_id))
+    thread.start()
 
-    return {"task_id": task_id}
-
+    return jsonify({"task_id": task_id})
 
 
 
