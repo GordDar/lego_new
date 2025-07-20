@@ -1118,358 +1118,316 @@ def update_task_status(task_id: str, status: str, message: str):
 
 
 
-# def process_db_add(file_name: str, task_id: str):
-#     # Обновляем статус на "processing"
-#     task_status = get_task_status_by_id(task_id)
-    
-#     # Получаем путь к папке, где находится текущий скрипт
-#     base_dir = os.path.dirname(os.path.abspath(__file__))
-#     # Формируем полный путь к файлу
-#     file_name= "database_copy.csv"
-#     file_path = os.path.join(base_dir, file_name)
-    
-#     if task_status:
-#         update_task_status(task_id, status='processing', message='Загрузка началась')
-#     else:
-#         return
+def process_db_add(file_name: str, task_id: str):
+    # Обновляем статус задачи на "processing"
+    update_task_status(task_id, status='processing', message='Загрузка началась')
+    try:
+        # Получение содержимого файла из облака
+        bucket = storage_client.bucket(BUCKET_NAME)
+        blob = bucket.blob(file_name)
+        content = blob.download_as_text(encoding='utf-8')
 
-#     try:
-#         print("Код начал загружаться")
-        
+        reader = csv.DictReader(io.StringIO(content))
+
+        # Очистка таблиц перед загрузкой новых данных
+        db.session.query(OrderItem).delete()
+        db.session.query(MoreId).delete()
+        db.session.query(Images).delete()
+        db.session.query(CatalogItem).delete()
+        db.session.query(Category).delete()
+        db.session.commit()
+
+        results_id = {}
+        results_dict = {}
+        single_id_results = []
+
+        for row in reader:
+            row = {k.strip(): v for k,v in row.items()}
+
+            item_no = row.get('Item No', '').strip()
+            color_name = row.get('Color', '').strip()
+            color_number = color_dict.get(color_name, '0')
+
+            if color_name == 'n/a':
+                image_url = f"https://img.bricklink.com/ItemImage/IN/{color_number}/{item_no}.png"
+            else:
+                image_url = f"https://img.bricklink.com/ItemImage/PN/{color_number}/{item_no}.png"
+
+            # Добавляем изображение
+            new_image = Images(ids=item_no, color=color_name, image_url=image_url)
+            db.session.add(new_image)
+
+            # Получение старых ID для товара
+            if item_no not in results_id:
+                old_id_result = get_old_id_for_item(driver=None, item_no=item_no)  # Передайте драйвер или уберите его если не нужен
+                if old_id_result:
+                    ids_list = [id_str.strip() for id_str in old_id_result.split(',')]
+                    results_id[item_no] = ids_list
+                else:
+                    results_id[item_no] = []
+
+            # Заполняем результаты по старым ID
+            for item_key, ids_list in results_id.items():
+                if ids_list:
+                    for id_value in ids_list:
+                        single_id_results.append({'Item No': item_key, 'Old ID': id_value})
+                else:
+                    single_id_results.append({'Item No': item_key, 'Old ID': None})
+
+            # Добавляем записи в MoreId
+            for entry in single_id_results:
+                new_record = MoreId(ids=entry['Item No'], old_id=entry['Old ID'])
+                db.session.add(new_record)
+
+            # Обработка категории
+            category_name = row['Category'].strip()
+            category_obj, _ = get_or_create(db.session, Category, name=category_name)
+
+            def parse_float(value):
+                try:
+                    return float(value.replace('$', '').strip()) if value else None
+                except:
+                    return None
+
+            def parse_int(value):
+                try:
+                    return int(value) if value else None
+                except:
+                    return None
+
+            def str_to_bool(val):
+                return val.lower() in ('true', '1', 'yes')
+
+            # Создаем объект CatalogItem
+            item = CatalogItem(
+                lot_id=row['Lot ID'].strip(),
+                color=row['Color'].strip(),
+                category_id=category_obj.id,
+                condition=row.get('Condition', '').strip(),
+                sub_condition=row.get('Sub-Condition', '').strip(),
+                description=row.get('Description', '').strip(),
+                remarks=row.get('Remarks', '').strip(),
+                price=parse_float(row.get('Price')),
+                quantity=parse_int(row.get('Quantity')),
+                bulk=str_to_bool(row.get('Bulk', 'False')),
+                sale=str_to_bool(row.get('Sale', 'False')),
+                url=image_url,
+                item_no=item_no,
+                tier_qty_1=parse_int(row['Tier Qty 1']),
+                tier_price_1=parse_float(row['Tier Price 1']),
+                tier_qty_2=parse_int(row['Tier Qty 2']),
+                tier_price_2=parse_float(row['Tier Price 2']),
+                tier_qty_3=parse_int(row['Tier Qty 3']),
+                tier_price_3=parse_float(row['Tier Price 3']),
+                reserved_for=row.get('Reserved For', '').strip(),
+                stockroom=row.get('Stockroom', '').strip(),
+                retain=str_to_bool(row.get('Retain', 'False')),
+                super_lot_id=row.get('Super Lot ID', '').strip(),
+                super_lot_qty=parse_int(row.get('Super Lot Qty')),
+                weight=parse_float(row.get('Weight')),
+                extended_description=row.get('Extended Description', '').strip(),
+                
+                date_added=datetime.strptime(row['Date Added'], '%m/%d/%Y') if row.get('Date Added') else None,
+                
+                date_last_sold=datetime.strptime(row['Date Last Sold'], '%Y-%m-%d') if row.get('Date Last Sold') else None,
+                
+                currency=row.get('Currency', '').strip()
+            )
+            db.session.add(item)
+
+        db.session.commit()
+
+        # Обновляем статус задачи на "completed"
+        update_task_status(task_id, status='completed', message='Все действия выполнены')
+    except Exception as e:
+        db.session.rollback()
+        update_task_status(task_id, status='error', message=str(e))
+    finally:
+        # Если есть драйвер или другие ресурсы - закрываем их тут
+        driver.quit()
+
+
+@app.route("/db_add", methods=["POST"])
+def db_add():
+    # Проверка наличия файла
+    if 'file' not in request.files:
+        return jsonify({"error": "Файл не найден"}), 400
+
+    file = request.files['file']
+    # Получение имени файла
+    file_name = file.filename
+
+    # Чтение содержимого файла
+    file_content = file.read().decode('utf-8')
+
+    # Создание задачи
+    task_id = str(uuid.uuid4())
+    create_task_status(task_id=task_id, status='pending', message='Задача создана')
+
+    # Запуск фоновой задачи с именем файла и содержимым
+    thread = threading.Thread(target=process_db_add, args=(file_name, file_content, task_id))
+    thread.start()
+
+    return jsonify({"task_id": task_id})
+
+
+@app.route('/task_status/<task_id>')
+def get_task_status_endpoint(task_id):
+    status_record = get_task_status_by_id(task_id)
+    if not status_record:
+        return jsonify({"error": "Задача не найдена"}), 404
+    
+    return {
+        "task_id": task_id,
+        "status": status_record.status,
+        "message": status_record.message
+    }
+
+# def process_db_add(file_name: str, task_id: str):
+#     from app_lego import app  # импортируйте ваше приложение Flask
+
+#     with app.app_context():
 #         try:
+#             # Обновляем статус на "processing"
+#             update_task_status(task_id, status='processing', message='Загрузка началась')
+
+#             base_dir = os.path.dirname(os.path.abspath(__file__))
+#             file_path = os.path.join(base_dir, file_name)
+            
+#             # Очистка таблиц перед загрузкой новых данных
+#             db.session.query(OrderItem).delete()
+#             db.session.query(MoreId).delete()
+#             db.session.query(Images).delete()
+#             db.session.query(CatalogItem).delete()
+#             db.session.query(Category).delete()
+#             db.session.commit()
+            
+#             print("Код начал загружаться")
 #             with open(file_path, newline='', encoding='utf-8') as infile:
 #                 reader = csv.DictReader(infile)
-#             # bucket = storage_client.bucket(BUCKET_NAME)
-#             # blob = bucket.blob(file_name)
 
-#             # content = blob.download_as_text(encoding='utf-8')
+#                 results = []
+#                 results_dict = {}
+#                 results_id = {}
+#                 single_id_results = []
 
-#             # reader = csv.DictReader(io.StringIO(content))
-
-#             # Обработка заголовков
-#                 rows = []
 #                 for row in reader:
-#                     row = {(k or '').strip(): v for k, v in row.items()}
-#                     rows.append(row)
+#                     row = {k.strip(): v for k,v in row.items()}
 
-#                 db.session.query(Category).delete()
-#                 db.session.query(OrderItem).delete()
-#                 db.session.query(CatalogItem).delete()
-#                 db.session.commit()
-
-#                 image_cache = {}
-
-#                 for row in rows:
 #                     item_no = row.get('Item No', '').strip()
-#                     image_url = ''
-#                     color_name = row['Color']  
-#                     color_number = color_dict.get(color_name, '0')  
+#                     color_name = row.get('Color', '').strip()
+#                     color_number = color_dict.get(color_name, '0')
+
 #                     if color_name == 'n/a':
 #                         image_url = f"https://img.bricklink.com/ItemImage/IN/{color_number}/{item_no}.png"
-#                     else:        
+#                     else:
 #                         image_url = f"https://img.bricklink.com/ItemImage/PN/{color_number}/{item_no}.png"
-                        
+
 #                     results.append({'Item No': item_no, 'Color': color_name, 'Image URL': image_url})
 #                     results_dict[item_no] = image_url
 
-#                     # Создаем новую запись в таблице Images
-#                     new_image = Images(
-#                         ids=item_no,
-#                         color=color_name,
-#                         image_url=image_url
-#                     )
+#                     # Создаем новую запись в Images
+#                     new_image = Images(ids=item_no, color=color_name, image_url=image_url)
 #                     db.session.add(new_image)
-                    
-                    
-#                     if item_no in results_id:
-#                         continue
 
-#                     old_id_result = get_old_id_for_item(driver, item_no)
-#                     if old_id_result:
-#                         # Разделяем по запятой и очищаем пробелы
-#                         ids = [id_str.strip() for id_str in old_id_result.split(',')]
-#                         results_id[item_no] = ids
-#                     else:
-#                         results_id[item_no] = []
+#                     # if item_no not in results_id:
+#                     #     old_id_result = get_old_id_for_item(driver, item_no)
+#                     #     if old_id_result:
+#                     #         ids = [id_str.strip() for id_str in old_id_result.split(',')]
+#                     #         results_id[item_no] = ids
+#                     #     else:
+#                     #         results_id[item_no] = []
 
-#                     for item_no, ids_list in results_id.items():
-#                         if ids_list:
-#                             for id_value in ids_list:
-#                                 single_id_results.append({'Item No': item_no, 'Old ID': id_value})
-#                         else:
-#                             # Если ID отсутствует, добавим запись с None или 'Нет данных'
-#                             single_id_results.append({'Item No': item_no, 'Old ID': None})
+#                     # for item_no_key, ids_list in results_id.items():
+#                     #     if ids_list:
+#                     #         for id_value in ids_list:
+#                     #             single_id_results.append({'Item No': item_no_key, 'Old ID': id_value})
+#                     #     else:
+#                     #         single_id_results.append({'Item No': item_no_key, 'Old ID': None})
 
-#                     # Теперь можно вывести или сохранить этот список
-#                     for entry in single_id_results:
-#                         new_record = MoreId(
-#                             ids=entry['Item No'], 
-#                             old_id=entry['Old ID']
-#                             )
-#                         db.session.add(new_record)
+#                     # for entry in single_id_results:
+#                     #     new_record = MoreId(ids=entry['Item No'], old_id=entry['Old ID'])
+#                     #     db.session.add(new_record)
 
 #                     # Обработка категории
 #                     category_name = row['Category'].strip()
-#                     category, created = get_or_create(db.session, Category, name=category_name)
+#                     category_obj, _ = get_or_create(db.session, Category, name=category_name)
 
 #                     # Создаем объект CatalogItem
+#                     def parse_float(value):
+#                         try:
+#                             return float(value.replace('$', '').strip()) if value else None
+#                         except:
+#                             return None
+
+#                     def parse_int(value):
+#                         try:
+#                             return int(value) if value else None
+#                         except:
+#                             return None
+
 #                     item = CatalogItem(
 #                         lot_id=row['Lot ID'].strip(),
 #                         color=row['Color'].strip(),
-#                         category_id=category.id,
+#                         category_id=category_obj.id,
 #                         condition=row.get('Condition', '').strip(),
 #                         sub_condition=row.get('Sub-Condition', '').strip(),
 #                         description=row.get('Description', '').strip(),
 #                         remarks=row.get('Remarks', '').strip(),
-#                         price=float(row['Price'].replace('$', '').strip()) if row.get('Price') else None,
-#                         quantity=int(row['Quantity']) if row.get('Quantity') else None,
+#                         price=parse_float(row.get('Price')),
+#                         quantity=parse_int(row.get('Quantity')),
 #                         bulk=str_to_bool(row.get('Bulk', 'False')),
 #                         sale=str_to_bool(row.get('Sale', 'False')),
-#                         url= image_url,
+#                         url=image_url,
 #                         item_no=item_no,
-#                         tier_qty_1=int(row['Tier Qty 1']) if row['Tier Qty 1'] else None,
-#                         tier_price_1=float(row['Tier Price 1'].replace('$', '').strip()) if row['Tier Price 1'] else None,
-#                         tier_qty_2=int(row['Tier Qty 2']) if row['Tier Qty 2'] else None,
-#                         tier_price_2=float(row['Tier Price 2'].replace('$', '').strip()) if row['Tier Price 2'] else None,
-#                         tier_qty_3=int(row['Tier Qty 3']) if row['Tier Qty 3'] else None,
-#                         tier_price_3=float(row['Tier Price 3'].replace('$', '').strip()) if row['Tier Price 3'] else None,
+#                         tier_qty_1=parse_int(row['Tier Qty 1']),
+#                         tier_price_1=parse_float(row['Tier Price 1']),
+#                         tier_qty_2=parse_int(row['Tier Qty 2']),
+#                         tier_price_2=parse_float(row['Tier Price 2']),
+#                         tier_qty_3=parse_int(row['Tier Qty 3']),
+#                         tier_price_3=parse_float(row['Tier Price 3']),
 #                         reserved_for=row.get('Reserved For', '').strip(),
 #                         stockroom=row.get('Stockroom', '').strip(),
 #                         retain=str_to_bool(row.get('Retain', 'False')),
 #                         super_lot_id=row.get('Super Lot ID', '').strip(),
-#                         super_lot_qty=int(row['Super Lot Qty']) if row.get('Super Lot Qty') else None,
-#                         weight=float(row['Weight']) if row.get('Weight') else None,
+#                         super_lot_qty=parse_int(row.get('Super Lot Qty')),
+#                         weight=parse_float(row.get('Weight')),
 #                         extended_description=row.get('Extended Description', '').strip(),
-
+                        
 #                         date_added=datetime.strptime(row['Date Added'], '%m/%d/%Y') if row.get('Date Added') else None,
-#                         date_last_sold=datetime.strptime(row['Date Last Sold'], '%Y-%m-%d') if row.get(
-#                             'Date Last Sold') else None,
-
+                        
+#                         date_last_sold=datetime.strptime(row['Date Last Sold'], '%Y-%m-%d') if row.get('Date Last Sold') else None,
+                        
 #                         currency=row.get('Currency', '').strip()
 #                     )
 #                     db.session.add(item)
-#                     print("{lot_id} добавлен")
+
 #             db.session.commit()
+
+#             import time
+#             time.sleep(5)  # имитация длительной операции
+
+#             # После успешной обработки обновляем статус
+#             update_task_status(task_id, status='completed', message='Все действия выполнены')
 #         except Exception as e:
 #             db.session.rollback()
-#             return jsonify({"status": "error", "message": str(e)}), 500
+#             update_task_status(task_id, status='error', message=str(e))
 #         finally:
 #             driver.quit()
-            
-            
-#         import time
-#         time.sleep(5)  # имитация длительной операции
 
-#         # После успешной обработки обновляем статус
-#         update_task_status(task_id, status='completed', message='Все действия выполнены')
-#     except Exception as e:
-#         # В случае ошибки обновляем статус на "error"
-#         update_task_status(task_id, status='error', message=str(e))
-
-
-
-
-# # @app.route("/db_add", methods=["GET", "POST"])
-# # async def db_add_endpoint(request: Request, background_tasks: BackgroundTasks):
-# #     data = await request.json()
-# #     file_name = data.get('file_name')
-    
-# #     if not file_name:
-# #         return JSONResponse(status_code=400, content={"error": "file_name обязательное поле"})
-
-# #     # Создаем уникальный ID задачи
-# #     task_id = str(uuid.uuid4())
-
-# #     # Создаем запись о задаче со статусом "pending"
-# #     create_task_status(task_id=task_id, status='pending', message='Задача создана')
-
-# #     # Запускаем фоновую задачу с передачей task_id
-# #     background_tasks.add_task(process_db_add, file_name, task_id)
-
-# #     return {"task_id": task_id}
 
 
 # @app.route("/db_add", methods=["GET", "POST"])
 # def db_add():
-#     file_name = "database_copy.csv"
-#     if not file_name:
-#         return jsonify({"error": "file_name not found"}), 400
-
-#     # raw_csv = request.data.decode('utf-8')
-#     # if not raw_csv:
-#     #     return jsonify({"error": "Нет данных"}), 400
-    
-#     # Создаем уникальный ID задачи
+#     file_name = "database.csv"
 #     task_id = str(uuid.uuid4())
 
-#     # Создаем запись о задаче со статусом "pending"
 #     create_task_status(task_id=task_id, status='pending', message='Задача создана')
 
-#     # Запускаем фоновую задачу в отдельном потоке
 #     thread = threading.Thread(target=process_db_add, args=(file_name, task_id))
 #     thread.start()
 
 #     return jsonify({"task_id": task_id})
-
-
-
-# @app.get('/task_status/{task_id}')
-# def get_task_status_endpoint(task_id: str):
-#     status_record = get_task_status_by_id(task_id)
-#     if not status_record:
-#         return JSONResponse(status_code=404, content={"error": "Задача не найдена"})
-    
-#     return {
-#         "task_id": task_id,
-#         "status": status_record.status,
-#         "message": status_record.message
-#     }
-
-def process_db_add(file_name: str, task_id: str):
-    from app_lego import app  # импортируйте ваше приложение Flask
-
-    with app.app_context():
-        try:
-            # Обновляем статус на "processing"
-            update_task_status(task_id, status='processing', message='Загрузка началась')
-
-            base_dir = os.path.dirname(os.path.abspath(__file__))
-            file_path = os.path.join(base_dir, file_name)
-            
-            # Очистка таблиц перед загрузкой новых данных
-            db.session.query(OrderItem).delete()
-            db.session.query(MoreId).delete()
-            db.session.query(Images).delete()
-            db.session.query(CatalogItem).delete()
-            db.session.query(Category).delete()
-            db.session.commit()
-            
-            print("Код начал загружаться")
-            with open(file_path, newline='', encoding='utf-8') as infile:
-                reader = csv.DictReader(infile)
-
-                results = []
-                results_dict = {}
-                results_id = {}
-                single_id_results = []
-
-                for row in reader:
-                    row = {k.strip(): v for k,v in row.items()}
-
-                    item_no = row.get('Item No', '').strip()
-                    color_name = row.get('Color', '').strip()
-                    color_number = color_dict.get(color_name, '0')
-
-                    if color_name == 'n/a':
-                        image_url = f"https://img.bricklink.com/ItemImage/IN/{color_number}/{item_no}.png"
-                    else:
-                        image_url = f"https://img.bricklink.com/ItemImage/PN/{color_number}/{item_no}.png"
-
-                    results.append({'Item No': item_no, 'Color': color_name, 'Image URL': image_url})
-                    results_dict[item_no] = image_url
-
-                    # Создаем новую запись в Images
-                    new_image = Images(ids=item_no, color=color_name, image_url=image_url)
-                    db.session.add(new_image)
-
-                    # if item_no not in results_id:
-                    #     old_id_result = get_old_id_for_item(driver, item_no)
-                    #     if old_id_result:
-                    #         ids = [id_str.strip() for id_str in old_id_result.split(',')]
-                    #         results_id[item_no] = ids
-                    #     else:
-                    #         results_id[item_no] = []
-
-                    # for item_no_key, ids_list in results_id.items():
-                    #     if ids_list:
-                    #         for id_value in ids_list:
-                    #             single_id_results.append({'Item No': item_no_key, 'Old ID': id_value})
-                    #     else:
-                    #         single_id_results.append({'Item No': item_no_key, 'Old ID': None})
-
-                    # for entry in single_id_results:
-                    #     new_record = MoreId(ids=entry['Item No'], old_id=entry['Old ID'])
-                    #     db.session.add(new_record)
-
-                    # Обработка категории
-                    category_name = row['Category'].strip()
-                    category_obj, _ = get_or_create(db.session, Category, name=category_name)
-
-                    # Создаем объект CatalogItem
-                    def parse_float(value):
-                        try:
-                            return float(value.replace('$', '').strip()) if value else None
-                        except:
-                            return None
-
-                    def parse_int(value):
-                        try:
-                            return int(value) if value else None
-                        except:
-                            return None
-
-                    item = CatalogItem(
-                        lot_id=row['Lot ID'].strip(),
-                        color=row['Color'].strip(),
-                        category_id=category_obj.id,
-                        condition=row.get('Condition', '').strip(),
-                        sub_condition=row.get('Sub-Condition', '').strip(),
-                        description=row.get('Description', '').strip(),
-                        remarks=row.get('Remarks', '').strip(),
-                        price=parse_float(row.get('Price')),
-                        quantity=parse_int(row.get('Quantity')),
-                        bulk=str_to_bool(row.get('Bulk', 'False')),
-                        sale=str_to_bool(row.get('Sale', 'False')),
-                        url=image_url,
-                        item_no=item_no,
-                        tier_qty_1=parse_int(row['Tier Qty 1']),
-                        tier_price_1=parse_float(row['Tier Price 1']),
-                        tier_qty_2=parse_int(row['Tier Qty 2']),
-                        tier_price_2=parse_float(row['Tier Price 2']),
-                        tier_qty_3=parse_int(row['Tier Qty 3']),
-                        tier_price_3=parse_float(row['Tier Price 3']),
-                        reserved_for=row.get('Reserved For', '').strip(),
-                        stockroom=row.get('Stockroom', '').strip(),
-                        retain=str_to_bool(row.get('Retain', 'False')),
-                        super_lot_id=row.get('Super Lot ID', '').strip(),
-                        super_lot_qty=parse_int(row.get('Super Lot Qty')),
-                        weight=parse_float(row.get('Weight')),
-                        extended_description=row.get('Extended Description', '').strip(),
-                        
-                        date_added=datetime.strptime(row['Date Added'], '%m/%d/%Y') if row.get('Date Added') else None,
-                        
-                        date_last_sold=datetime.strptime(row['Date Last Sold'], '%Y-%m-%d') if row.get('Date Last Sold') else None,
-                        
-                        currency=row.get('Currency', '').strip()
-                    )
-                    db.session.add(item)
-
-            db.session.commit()
-
-            import time
-            time.sleep(5)  # имитация длительной операции
-
-            # После успешной обработки обновляем статус
-            update_task_status(task_id, status='completed', message='Все действия выполнены')
-        except Exception as e:
-            db.session.rollback()
-            update_task_status(task_id, status='error', message=str(e))
-        finally:
-            driver.quit()
-
-
-
-@app.route("/db_add", methods=["GET", "POST"])
-def db_add():
-    file_name = "database.csv"
-    task_id = str(uuid.uuid4())
-
-    create_task_status(task_id=task_id, status='pending', message='Задача создана')
-
-    thread = threading.Thread(target=process_db_add, args=(file_name, task_id))
-    thread.start()
-
-    return jsonify({"task_id": task_id})
 
 
 # --- 10. Просмотр деталей по категории ---
