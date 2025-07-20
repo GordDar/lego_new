@@ -1249,17 +1249,17 @@ def process_db_add(file_name: str, task_id: str):
 
 @app.route("/db_add", methods=["POST"])
 def db_add():
-    # Проверка наличия файла
-    if 'file' not in request.files:
-        return jsonify({"error": "Файл не найден"}), 400
 
-    file = request.files['file']
-    # Получение имени файла
-    file_name = file.filename
+    file_name = request.args.get('file_name')
+    if not file_name:
+        return jsonify({"error": "Параметр 'file_name' обязателен"}), 400
 
-    # Чтение содержимого файла
-    file_content = file.read().decode('utf-8')
-
+    # Получение содержимого файла из тела запроса
+    raw_data = request.data.decode('utf-8')
+    if not raw_data:
+        return jsonify({"error": "Нет данных в теле запроса"}), 400
+    
+    
     # Создание задачи
     task_id = str(uuid.uuid4())
     create_task_status(task_id=task_id, status='pending', message='Задача создана')
