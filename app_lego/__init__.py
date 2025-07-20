@@ -1472,7 +1472,6 @@ def db_add():
     return jsonify({"task_id": task_id})
 
 
-
 # --- 10. Просмотр деталей по категории ---
 @app.get("/categories/<category_part>")
 def get_items_by_category_part(category_part):
