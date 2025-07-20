@@ -1249,7 +1249,7 @@ def process_db_add(file_name: str, task_id: str):
 
 @app.route("/db_add", methods=["POST"])
 def db_add():
-
+    # Получение имени файла из GET-параметров
     file_name = request.args.get('file_name')
     if not file_name:
         return jsonify({"error": "Параметр 'file_name' обязателен"}), 400
@@ -1258,14 +1258,13 @@ def db_add():
     raw_data = request.data.decode('utf-8')
     if not raw_data:
         return jsonify({"error": "Нет данных в теле запроса"}), 400
-    
-    
+
     # Создание задачи
     task_id = str(uuid.uuid4())
     create_task_status(task_id=task_id, status='pending', message='Задача создана')
 
     # Запуск фоновой задачи с именем файла и содержимым
-    thread = threading.Thread(target=process_db_add, args=(file_name, file_content, task_id))
+    thread = threading.Thread(target=process_db_add, args=(file_name, raw_data, task_id))
     thread.start()
 
     return jsonify({"task_id": task_id})
