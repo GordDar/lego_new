@@ -163,8 +163,8 @@ def get_catalog():
     search_category = request.args.get('category', '', type=str)
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 20, type=int)
-
-    query = CatalogItem.query
+    
+    query = CatalogItem.query.join(Category, CatalogItem.category_id == Category.id).filter(Category.name.ilike('Parts%'))
 
     # Добавляем фильтр для исключения товаров с количеством 0
     query = query.filter(CatalogItem.quantity > 0)
@@ -334,14 +334,16 @@ def submit_cart():
         if catalog_item_number not in catalog_items_cache:
             catalog_item = CatalogItem.query.filter_by(item_no=catalog_item_number).first()
             if not catalog_item:
+                print("a")
                 return jsonify({'error': f'Item with item number {catalog_item_number} не найден'}), 404
             catalog_items_cache[catalog_item_number] = catalog_item
         else:
             catalog_item = catalog_items_cache[catalog_item_number]
         
         if catalog_item.quantity < quantity_requested:
+            print("b")
             return jsonify({
-                'error': f'Недостаточно товара "{catalog_item.description}". '
+                'error': f'No Недостаточно товара "{catalog_item.description}". '
                          f'Доступно: {catalog_item.quantity}, запрошено: {quantity_requested}'
             }), 400
         
@@ -361,74 +363,257 @@ def submit_cart():
     min_order_value = settings.settings_value if settings else None
     
     if min_order_value is not None and total_price < min_order_value:
+        print("c")
         return jsonify({
-            'error': f'Минимальная сумма заказа составляет {min_order_value}. '
-                     f'Ваш заказ на сумму {total_price} не может быть принят.'
+            'error': f'Min {min_order_value}. '
+                     f'Your {total_price}'
         }), 400
         
         
-    from fpdf import FPDF   
-    # Создаем PDF с данными заказа
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_font("Arial", size=12)
+    # from fpdf import FPDF   
+    # # Создаем PDF с данными заказа
+    # pdf = FPDF()
+    # pdf.add_page()
+    # pdf.set_font("Arial", size=12)
 
-    # Заголовок
-    pdf.cell(0, 10, txt="Детали заказа", ln=True, align='C')
-    pdf.ln(10)
+    # # Заголовок
+    # pdf.cell(0, 10, txt="Детали заказа", ln=True, align='C')
+    # pdf.ln(10)
 
-    # Информация о клиенте
-    pdf.set_font("Arial", style='B', size=12)
-    pdf.cell(0, 10, txt="Информация о клиенте:", ln=True)
-    pdf.set_font("Arial", size=12)
-    pdf.cell(0, 8, txt=f"Имя: {customer_name}", ln=True)
-    pdf.cell(0, 8, txt=f"Телефон: {customer_telephone}", ln=True)
-    if customer_email:
-        pdf.cell(0, 8, txt=f"Email: {customer_email}", ln=True)
-    pdf.ln(5)
+    # # Информация о клиенте
+    # pdf.set_font("Arial", style='B', size=12)
+    # pdf.cell(0, 10, txt="Информация о клиенте:", ln=True)
+    # pdf.set_font("Arial", size=12)
+    # pdf.cell(0, 8, txt=f"Имя: {customer_name}", ln=True)
+    # pdf.cell(0, 8, txt=f"Телефон: {customer_telephone}", ln=True)
+    # if customer_email:
+    #     pdf.cell(0, 8, txt=f"Email: {customer_email}", ln=True)
+    # pdf.ln(5)
 
-    # Информация о доставке
-    if dostavka:
-        pdf.set_font("Arial", style='B', size=12)
-        pdf.cell(0, 10, txt="Доставка: Да", ln=True)
-    else:
-        pdf.set_font("Arial", style='B', size=12)
-        pdf.cell(0, 10, txt="Доставка: Нет", ln=True)
-    pdf.ln(10)
+    # # Информация о доставке
+    # if dostavka:
+    #     pdf.set_font("Arial", style='B', size=12)
+    #     pdf.cell(0, 10, txt="Доставка: Да", ln=True)
+    # else:
+    #     pdf.set_font("Arial", style='B', size=12)
+    #     pdf.cell(0, 10, txt="Доставка: Нет", ln=True)
+    # pdf.ln(10)
 
-    # Таблица с товаром
-    pdf.set_font("Arial", style='B', size=12)
-    pdf.cell(80, 10, txt="Описание", border=1)
-    pdf.cell(30, 10, txt="Кол-во", border=1)
-    pdf.cell(30, 10, txt="Цена", border=1)
-    pdf.cell(30, 10, txt="Всего", border=1)
-    pdf.ln()
+    # # Таблица с товаром
+    # pdf.set_font("Arial", style='B', size=12)
+    # pdf.cell(80, 10, txt="Описание", border=1)
+    # pdf.cell(30, 10, txt="Кол-во", border=1)
+    # pdf.cell(30, 10, txt="Цена", border=1)
+    # pdf.cell(30, 10, txt="Всего", border=1)
+    # pdf.ln()
 
-    pdf.set_font("Arial", size=12)
-    for item in order_details_for_email:
-        pdf.cell(80, 10, txt=item['description'], border=1)
-        pdf.cell(30, 10, txt=str(item['quantity_in_order']), border=1)
-        pdf.cell(30, 10, txt=f"{item['unit_price']:.2f}", border=1)
-        pdf.cell(30, 10, txt=f"{item['total_price']:.2f}", border=1)
-        pdf.ln()
+    # pdf.set_font("Arial", size=12)
+    # for item in order_details_for_email:
+    #     pdf.cell(80, 10, txt=item['description'], border=1)
+    #     pdf.cell(30, 10, txt=str(item['quantity_in_order']), border=1)
+    #     pdf.cell(30, 10, txt=f"{item['unit_price']:.2f}", border=1)
+    #     pdf.cell(30, 10, txt=f"{item['total_price']:.2f}", border=1)
+    #     pdf.ln()
 
-    # Общая сумма
-    pdf.ln(5)
-    pdf.set_font("Arial", style='B', size=12)
-    pdf.cell(0, 10, txt=f"Общая сумма: {total_price:.2f}", ln=True, align='R')
+    # # Общая сумма
+    # pdf.ln(5)
+    # pdf.set_font("Arial", style='B', size=12)
+    # pdf.cell(0, 10, txt=f"Общая сумма: {total_price:.2f}", ln=True, align='R')
 
-    # Сохраняем PDF в память
-    pdf_buffer = io.BytesIO()
-    pdf.output(pdf_buffer)
-    pdf_buffer.seek(0)
+    # # Сохраняем PDF в память
+    # pdf_buffer = io.BytesIO()
+    # pdf.output(pdf_buffer)
+    # pdf_buffer.seek(0)
 
+
+    # from fpdf import FPDF
+    # import io
+
+    # # Создаем PDF с данными заказа
+    # pdf = FPDF()
+
+    # # Добавляем страницу
+    # pdf.add_page()
+
+    # # Регистрация шрифта с поддержкой Unicode
+    # # Можно использовать встроенный шрифт DejaVuSans, который идет в комплекте
+    # # или подключить свой TTF-файл.
+    # pdf.add_font("DejaVu", fname="DejaVuSans.ttf", uni=True)
+
+    # # Устанавливаем шрифт
+    # pdf.set_font("DejaVu", size=12)
+
+    # # Заголовок
+    # pdf.cell(0, 10, txt="Детали заказа", ln=True, align='C')
+    # pdf.ln(10)
+
+    # # Информация о клиенте
+    # pdf.set_font("DejaVu", style='B', size=12)
+    # pdf.cell(0, 10, txt="Информация о клиенте:", ln=True)
+    # pdf.set_font("DejaVu", size=12)
+    # pdf.cell(0, 8, txt=f"Имя: {customer_name}", ln=True)
+    # pdf.cell(0, 8, txt=f"Телефон: {customer_telephone}", ln=True)
+    # if customer_email:
+    #     pdf.cell(0, 8, txt=f"Email: {customer_email}", ln=True)
+    # pdf.ln(5)
+
+    # # Информация о доставке
+    # if dostavka:
+    #     pdf.set_font("DejaVu", style='B', size=12)
+    #     pdf.cell(0, 10, txt="Доставка: Да", ln=True)
+    # else:
+    #     pdf.set_font("DejaVu", style='B', size=12)
+    #     pdf.cell(0, 10, txt="Доставка: Нет", ln=True)
+    # pdf.ln(10)
+
+    # # Таблица с товаром
+    # pdf.set_font("DejaVu", style='B', size=12)
+    # pdf.cell(80, 10, txt="Описание", border=1)
+    # pdf.cell(30, 10, txt="Кол-во", border=1)
+    # pdf.cell(30, 10, txt="Цена", border=1)
+    # pdf.cell(30, 10, txt="Всего", border=1)
+    # pdf.ln()
+
+    # pdf.set_font("DejaVu", size=12)
+    # for item in order_details_for_email:
+    #     pdf.cell(80, 10, txt=item['description'], border=1)
+    #     pdf.cell(30, 10, txt=str(item['quantity_in_order']), border=1)
+    #     pdf.cell(30, 10, txt=f"{item['unit_price']:.2f}", border=1)
+    #     pdf.cell(30, 10, txt=f"{item['total_price']:.2f}", border=1)
+    #     pdf.ln()
+
+    # # Общая сумма
+    # pdf.ln(5)
+    # pdf.set_font("DejaVu", style='B', size=12)
+    # pdf.cell(0, 10, txt=f"Общая сумма: {total_price:.2f}", ln=True, align='R')
+
+    # # Сохраняем PDF в память
+    # pdf_buffer = io.BytesIO()
+    # pdf.output(pdf_buffer)
+    # pdf_buffer.seek(0)
          
-    
+         
+         
+         
+         
+         
+         
+         
+    # from reportlab.lib.pagesizes import A4
+    # from reportlab.pdfgen import canvas
+    # from reportlab.pdfbase import pdfmetrics
+    # from reportlab.pdfbase.ttfonts import TTFont
+
+    # # Создаем PDF-файл
+    # file_path = "order_details.pdf"
+    # pdf_buffer = io.BytesIO()
+    # c = canvas.Canvas(file_path, pagesize=A4)
+
+    # # Регистрация шрифта с поддержкой кириллицы
+    # # Если у вас есть TTF-файл шрифта, укажите путь к нему
+    # # Например: "DejaVuSans.ttf"
+    # font_path = "DejaVuSans.ttf"  # Укажите правильный путь к файлу шрифта
+
+    # try:
+    #     pdfmetrics.registerFont(TTFont('DejaVuSans', font_path))
+    #     font_name = 'DejaVuSans'
+    # except:
+    #     # Если шрифт не найден, используйте стандартный (без поддержки кириллицы)
+    #     font_name = 'Helvetica'
+
+    # # Установка шрифта и размера
+    # c.setFont(font_name, 12)
+
+    # # Начинаем писать текст
+    # y_position = 800  # начальная позиция по вертикали
+
+    # # Заголовок
+    # c.setFont(font_name, 16)
+    # c.drawString(100, y_position, "Детали заказа")
+    # y_position -= 30
+
+    # # Информация о клиенте
+    # c.setFont(font_name, 12)
+    # c.drawString(100, y_position, "Информация о клиенте:")
+    # y_position -= 20
+
+    # customer_name = "Иван Иванов"
+    # customer_telephone = "+7 912 345-67-89"
+    # customer_email = "ivan@example.com"
+
+    # c.drawString(120, y_position, f"Имя: {customer_name}")
+    # y_position -= 15
+    # c.drawString(120, y_position, f"Телефон: {customer_telephone}")
+    # y_position -= 15
+    # c.drawString(120, y_position, f"Email: {customer_email}")
+    # y_position -= 30
+
+    # # Информация о доставке
+    # dostavka = True
+
+    # if dostavka:
+    #     c.setFont(font_name, 12)
+    #     c.drawString(100, y_position, "Доставка: Да")
+    # else:
+    #     c.setFont(font_name, 12)
+    #     c.drawString(100, y_position, "Доставка: Нет")
+    # y_position -= 30
+
+    # # Таблица товаров
+    # columns = ["Описание", "Кол-во", "Цена", "Всего"]
+    # col_widths = [200, 50, 50, 50]
+    # x_positions = [100]
+    # for width in col_widths[:-1]:
+    #     x_positions.append(x_positions[-1] + width)
+
+    # # Заголовки таблицы
+    # c.setFont(font_name, 12)
+    # for i, col in enumerate(columns):
+    #     c.drawString(x_positions[i], y_position, col)
+    # y_position -= 20
+
+    # # Товары (пример)
+    # order_details_for_email = [
+    #     {
+    #         'description': 'Товар А',
+    #         'quantity_in_order': 2,
+    #         'unit_price': 500.0,
+    #         'total_price': 1000.0,
+    #     },
+    #     {
+    #         'description': 'Товар Б',
+    #         'quantity_in_order': 1,
+    #         'unit_price': 1500.0,
+    #         'total_price': 1500.0,
+    #     },
+    # ]
+
+    # for item in order_details_for_email:
+    #     c.drawString(x_positions[0], y_position, item['description'])
+    #     c.drawString(x_positions[1], y_position, str(item['quantity_in_order']))
+    #     c.drawString(x_positions[2], y_position, f"{item['unit_price']:.2f}")
+    #     c.drawString(x_positions[3], y_position, f"{item['total_price']:.2f}")
+    #     y_position -= 20
+
+    # # Общая сумма
+    # total_price = sum(item['total_price'] for item in order_details_for_email)
+    # y_position -= 10
+    # c.setFont(font_name + "-Bold", 12)
+    # c.drawRightString(500, y_position + 20, f"Общая сумма: {total_price:.2f}")
+
+    # # Сохраняем PDF
+    # c.save()
+    # pdf_bytes = pdf_buffer.getvalue()
+
+    # print(f"PDF сохранен как {file_path}")
+
+
+
 
     from datetime import datetime
 
+
     try:
-        # Используем транзакцию для атомарности операции
         with db.session.begin():
             order = Order(
                 customer_name=customer_name,
@@ -439,8 +624,8 @@ def submit_cart():
                 created_at=datetime.utcnow()
             )
             db.session.add(order)
-            db.session.flush()  # чтобы получить id заказа
-            
+            db.session.flush()
+
             for item in items_data:
                 catalog_item_number = item['item_no']
                 quantity_requested = item.get('quantity', 1)
@@ -452,19 +637,17 @@ def submit_cart():
                     quantity=quantity_requested
                 )
                 db.session.add(order_item)
-                
+
                 # Обновляем количество на складе
                 catalog_item.quantity -= quantity_requested
-            
-            db.session.commit()
 
-        # Отправляем письмо после успешной транзакции
+        # После выхода из блока транзакции, она автоматически зафиксируется
         send_order_email(order, order_details_for_email)
 
-        return jsonify({'message': 'Order created', 'order_id': order.id}), send_file(pdf_buffer, as_attachment=True, download_name='order_details.pdf', mimetype='application/pdf')    
-    
+        return jsonify({'message': 'Order created', 'order_id': order.id})
+
     except Exception as e:
-        db.session.rollback()
+        # Не вызывайте явно rollback(), он произойдет автоматически при исключении
         logging.exception("Ошибка при создании заказа")
         return jsonify({'error': 'Ошибка при обработке заказа'}), 500
 
@@ -686,9 +869,9 @@ def delete_order(order_id):
 # создание строчек изначально
 def create_initial_settings():
     initial_settings = [
-        {'settings_name': 'byn', 'settings_value': 0},
-        {'settings_name': 'rub', 'settings_value': 0},
-        {'settings_name': 'min', 'settings_value': 0}
+        {'settings_name': 'byn', 'settings_value': 3},
+        {'settings_name': 'rub', 'settings_value': 3},
+        {'settings_name': 'min', 'settings_value': 15}
     ]
 
     for setting in initial_settings:
@@ -712,6 +895,7 @@ def get_settings():
 @token_required
 def update_settings():
     data = request.get_json()
+    db.session.query(Settings).delete()
     
  # Значение приходит как множество, например {2.11}, !!!! {'курс белорусского рубля': {2.11}, 'курс российского рубля': {3.15}, 'минимальная сумма заказа': {15}}
  #    for key, value_set in data.items():
@@ -735,11 +919,13 @@ def update_settings():
     # Если настройки приходят как float, !!!!{'byn': 2.11, 'rub': 3.15, 'min': 15}
     for key, value in data.items():
         # Ищем настройку по имени
-        setting = Settings.query.filter_by(settings_name=key).first()
-        if setting:
-            # Обновляем только если значение не пустое
-            if value is not None and value != '':
-                setting.settings_value = float(value)
+        # setting = Settings.query.filter_by(settings_name=key).first()
+        # if setting:
+        #     # Обновляем только если значение не пустое
+        #     if value is not None and value != '':
+        #         setting.settings_value = float(value)
+        settings = Settings(settings_name=key, settings_value = value)
+        db.session.merge(settings)
     try:
         db.session.commit()
         return jsonify({"status": "success"}), 200
