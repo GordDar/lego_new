@@ -26,11 +26,11 @@ DB_PASS = os.getenv("DB_PASS")
 DB_NAME = os.getenv("DB_NAME")
 INSTANCE_CONNECTION_NAME = os.getenv("INSTANCE_CONNECTION_NAME")
 
-# app.config['SQLALCHEMY_DATABASE_URI'] = (
-#     f"postgresql+psycopg2://{DB_USER}:{DB_PASS}@/"
-#     f"{DB_NAME}?host=/cloudsql/{INSTANCE_CONNECTION_NAME}"
-# )
-app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://postgres:postgres@db:5432/mydb'
+app.config['SQLALCHEMY_DATABASE_URI'] = (
+    f"postgresql+psycopg2://{DB_USER}:{DB_PASS}@/"
+    f"{DB_NAME}?host=/cloudsql/{INSTANCE_CONNECTION_NAME}"
+)
+# app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://postgres:postgres@db:5432/mydb'
 app.config['SECRET_KEY'] = 'very_secret_key'
 app.secret_key = 'very_secret_key'
 db = SQLAlchemy(app)
@@ -934,9 +934,22 @@ def update_settings():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
+@app.route('/admin/save_order_comment/<int:order_id>', methods=['POST'])
+@token_required
+def save_order_comment(order_id):
+    data = request.get_json()
 
+    order = Order.query.get(order_id)
+    if not order:
+        return jsonify({'error': 'Order not found'}), 404
 
-
+    order.comment = data.get('comment', '')
+    try:
+        db.session.commit()
+        return jsonify({"status": "success"}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 
 # --- 6. Структура категорий ---
