@@ -40,7 +40,7 @@ class Order(db.Model):
     total_price = db.Column(db.Float)
     status = db.Column(db.String(20), default='не исполнен')  
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    comment = db.Column(db.String(2000))  
+    # comment = db.Column(db.String(2000))  
 
     # Связь с OrderItem
     order_items = db.relationship(

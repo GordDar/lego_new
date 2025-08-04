@@ -494,118 +494,6 @@ def submit_cart():
          
          
          
-         
-         
-         
-         
-         
-    # from reportlab.lib.pagesizes import A4
-    # from reportlab.pdfgen import canvas
-    # from reportlab.pdfbase import pdfmetrics
-    # from reportlab.pdfbase.ttfonts import TTFont
-
-    # # Создаем PDF-файл
-    # file_path = "order_details.pdf"
-    # pdf_buffer = io.BytesIO()
-    # c = canvas.Canvas(file_path, pagesize=A4)
-
-    # # Регистрация шрифта с поддержкой кириллицы
-    # # Если у вас есть TTF-файл шрифта, укажите путь к нему
-    # # Например: "DejaVuSans.ttf"
-    # font_path = "DejaVuSans.ttf"  # Укажите правильный путь к файлу шрифта
-
-    # try:
-    #     pdfmetrics.registerFont(TTFont('DejaVuSans', font_path))
-    #     font_name = 'DejaVuSans'
-    # except:
-    #     # Если шрифт не найден, используйте стандартный (без поддержки кириллицы)
-    #     font_name = 'Helvetica'
-
-    # # Установка шрифта и размера
-    # c.setFont(font_name, 12)
-
-    # # Начинаем писать текст
-    # y_position = 800  # начальная позиция по вертикали
-
-    # # Заголовок
-    # c.setFont(font_name, 16)
-    # c.drawString(100, y_position, "Детали заказа")
-    # y_position -= 30
-
-    # # Информация о клиенте
-    # c.setFont(font_name, 12)
-    # c.drawString(100, y_position, "Информация о клиенте:")
-    # y_position -= 20
-
-    # customer_name = "Иван Иванов"
-    # customer_telephone = "+7 912 345-67-89"
-    # customer_email = "ivan@example.com"
-
-    # c.drawString(120, y_position, f"Имя: {customer_name}")
-    # y_position -= 15
-    # c.drawString(120, y_position, f"Телефон: {customer_telephone}")
-    # y_position -= 15
-    # c.drawString(120, y_position, f"Email: {customer_email}")
-    # y_position -= 30
-
-    # # Информация о доставке
-    # dostavka = True
-
-    # if dostavka:
-    #     c.setFont(font_name, 12)
-    #     c.drawString(100, y_position, "Доставка: Да")
-    # else:
-    #     c.setFont(font_name, 12)
-    #     c.drawString(100, y_position, "Доставка: Нет")
-    # y_position -= 30
-
-    # # Таблица товаров
-    # columns = ["Описание", "Кол-во", "Цена", "Всего"]
-    # col_widths = [200, 50, 50, 50]
-    # x_positions = [100]
-    # for width in col_widths[:-1]:
-    #     x_positions.append(x_positions[-1] + width)
-
-    # # Заголовки таблицы
-    # c.setFont(font_name, 12)
-    # for i, col in enumerate(columns):
-    #     c.drawString(x_positions[i], y_position, col)
-    # y_position -= 20
-
-    # # Товары (пример)
-    # order_details_for_email = [
-    #     {
-    #         'description': 'Товар А',
-    #         'quantity_in_order': 2,
-    #         'unit_price': 500.0,
-    #         'total_price': 1000.0,
-    #     },
-    #     {
-    #         'description': 'Товар Б',
-    #         'quantity_in_order': 1,
-    #         'unit_price': 1500.0,
-    #         'total_price': 1500.0,
-    #     },
-    # ]
-
-    # for item in order_details_for_email:
-    #     c.drawString(x_positions[0], y_position, item['description'])
-    #     c.drawString(x_positions[1], y_position, str(item['quantity_in_order']))
-    #     c.drawString(x_positions[2], y_position, f"{item['unit_price']:.2f}")
-    #     c.drawString(x_positions[3], y_position, f"{item['total_price']:.2f}")
-    #     y_position -= 20
-
-    # # Общая сумма
-    # total_price = sum(item['total_price'] for item in order_details_for_email)
-    # y_position -= 10
-    # c.setFont(font_name + "-Bold", 12)
-    # c.drawRightString(500, y_position + 20, f"Общая сумма: {total_price:.2f}")
-
-    # # Сохраняем PDF
-    # c.save()
-    # pdf_bytes = pdf_buffer.getvalue()
-
-    # print(f"PDF сохранен как {file_path}")
 
 
 
@@ -651,6 +539,175 @@ def submit_cart():
         logging.exception("Ошибка при создании заказа")
         return jsonify({'error': 'Ошибка при обработке заказа'}), 500
 
+
+
+# --- 2.2   Обработка скачивания pdf ---
+import io
+from flask import request, jsonify, send_file
+from reportlab.lib.pagesizes import A4
+from reportlab.pdfgen import canvas
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+
+@app.route('/download_pdf')
+def download_pdf():
+    data = request.get_json()
+    
+    items_data = data.get('items')
+    # Создаем буфер для PDF
+    buffer = io.BytesIO()
+    c = canvas.Canvas(buffer, pagesize=A4)
+
+    # Путь к шрифту (укажите правильный путь к файлу TTF)
+    font_path = "DejaVuSans.ttf"  # Убедитесь, что файл есть в проекте или укажите полный путь
+
+    try:
+        pdfmetrics.registerFont(TTFont('DejaVuSans', font_path))
+        font_name = 'DejaVuSans'
+    except:
+        font_name = 'Helvetica'  # Стандартный шрифт без кириллицы
+
+    c.setFont(font_name, 12)
+
+    y_position = 800
+
+    # Заголовок
+    c.setFont(font_name, 16)
+    c.drawString(100, y_position, "Детали заказа")
+    y_position -= 30
+
+    # Информация о клиенте
+    c.setFont(font_name, 12)
+    c.drawString(100, y_position, "Информация о клиенте:")
+    y_position -= 20
+
+    customer_name = data.get('customer_name')
+    customer_telephone = data.get('customer_telephone')
+    customer_email = data.get('customer_email', '')
+    dostavka_flag = data.get('dostavka', False)
+
+    order_details_for_email = []
+    total_price = 0
+
+    # Предварительно ищем все CatalogItem один раз для повышения эффективности
+    catalog_items_cache = {}
+    
+    for item in items_data:
+        catalog_item_number = item['item_no']
+        quantity_requested = item.get('quantity', 1)
+        
+        if catalog_item_number not in catalog_items_cache:
+            catalog_item = CatalogItem.query.filter_by(item_no=catalog_item_number).first()
+            if not catalog_item:
+                return jsonify({'error': f'Item with item number {catalog_item_number} не найден'}), 404
+            catalog_items_cache[catalog_item_number] = catalog_item
+        else:
+            catalog_item = catalog_items_cache[catalog_item_number]
+        
+        if catalog_item.quantity < quantity_requested:
+            return jsonify({
+                'error': f'Недостаточно товара "{catalog_item.description}". '
+                         f'Доступно: {catalog_item.quantity}, запрошено: {quantity_requested}'
+            }), 400
+        
+        price_per_unit = getattr(catalog_item, 'price', 0)
+        total_price += price_per_unit * quantity_requested
+        
+        # Собираем данные для email
+        order_details_for_email.append({
+            'description': catalog_item.description,
+            'image': catalog_item.url,
+            'quantity_in_order': quantity_requested,
+            'unit_price': price_per_unit,
+            'total_price': price_per_unit * quantity_requested
+        })
+
+    # Вывод информации о клиенте
+    c.drawString(120, y_position, f"Имя: {customer_name}")
+    y_position -= 15
+    c.drawString(120, y_position, f"Телефон: {customer_telephone}")
+    y_position -= 15
+    c.drawString(120, y_position, f"Email: {customer_email}")
+    y_position -= 30
+
+    # Информация о доставке
+    if dostavka_flag:
+        c.drawString(100, y_position, "Доставка: Да")
+    else:
+        c.drawString(100, y_position, "Доставка: Нет")
+    y_position -= 30
+
+    # Таблица товаров
+    columns = ["Описание", "Кол-во", "Цена", "Всего"]
+    
+    col_widths = [150, 50, 70, 70]
+    
+    x_positions = [100]
+    for width in col_widths[:-1]:
+        x_positions.append(x_positions[-1] + width)
+
+    # Заголовки таблицы
+    c.setFont(font_name, 12)
+    
+    for i, col in enumerate(columns):
+        c.drawString(x_positions[i], y_position, col)
+        
+    y_position -= 20
+
+    # Вставка данных товаров
+    for item in order_details_for_email:
+        # Изображение (если есть локальный путь или поток)
+        image_url = item['image']
+        image_path_or_stream = None
+        
+        
+        
+        
+        # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        
+        
+        
+        # Предположим, что image_url — это локальный путь или URL.
+        # Для вставки изображения потребуется скачать его или иметь локальный файл.
+        # Ниже пример вставки изображения из файла (если есть локальный путь):
+        
+        # try:
+        #     # Если image_url — это локальный путь к файлу изображения
+        #     c.drawImage(image_url,
+        #                 x_positions[0],
+        #                 y_position - 15,
+        #                 width=col_widths[0],
+        #                 height=30,
+        #                 preserveAspectRatio=True,
+        #                 mask='auto')
+        # except Exception as e:
+        #     # Если не удалось вставить изображение — оставить текст или пропустить
+        #     c.drawString(x_positions[0], y_position, "[Нет изображения]")
+        
+        c.drawString(x_positions[0], y_position + 10, item['description'])
+        c.drawString(x_positions[1], y_position + 10, str(item['quantity_in_order']))
+        c.drawString(x_positions[2], y_position +10 , f"{item['unit_price']:.2f}")
+        c.drawString(x_positions[3], y_position +10 , f"{item['total_price']:.2f}")
+        
+        y_position -= 60  # Увеличьте отступ для следующей строки
+
+# Итоговая сумма
+    total_price_value = sum(item['total_price'] for item in order_details_for_email)
+
+    # Общая сумма справа внизу таблицы
+    c.setFont(font_name,12)
+    c.drawRightString(x_positions[-1] + col_widths[-1], y_position +20 , f"Общая сумма: {total_price_value:.2f}")
+
+    # Завершаем PDF и возвращаем его как ответ для скачивания
+    c.save()
+    buffer.seek(0)
+
+    return send_file(
+        buffer,
+        as_attachment=True,
+        download_name="order_details.pdf",
+        mimetype='application/pdf'
+    )
 
 
 
@@ -1436,21 +1493,23 @@ def process_db_add(file_name: str, task_id: str):
 @app.route("/db_add", methods=["POST"])
 def db_add():
     # Получение имени файла из GET-параметров
-    file_name = request.args.get('file_name')
-    if not file_name:
+    # file_name = request.args.get('file_name')
+    # if not file_name:
+    #     return jsonify({"error": "Param Параметр 'file_name' обязателен"}), 400
+    
+
+    data = request.get_json()
+    if not data or 'file_name' not in data:
         return jsonify({"error": "Параметр 'file_name' обязателен"}), 400
-
-    # Получение содержимого файла из тела запроса
-    raw_data = request.data.decode('utf-8')
-    if not raw_data:
-        return jsonify({"error": "Нет данных в теле запроса"}), 400
-
-    # Создание задачи
+    
+    file_name = data['file_name']
+    
+    # Создаем задачу
     task_id = str(uuid.uuid4())
     create_task_status(task_id=task_id, status='pending', message='Задача создана')
-
-    # Запуск фоновой задачи с именем файла и содержимым
-    thread = threading.Thread(target=process_db_add, args=(file_name, raw_data, task_id))
+    
+    # Запускаем фоновую задачу с двумя аргументами
+    thread = threading.Thread(target=process_db_add, args=(file_name, task_id))
     thread.start()
 
     return jsonify({"task_id": task_id})
