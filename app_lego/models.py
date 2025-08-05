@@ -8,7 +8,7 @@ from sqlalchemy.ext.declarative import declarative_base
 
 Base = declarative_base()
 
-class TaskStatus(Base):
+class TaskStatus(db.Model):
     __tablename__ = 'task_status'
     id = db.Column(db.Integer, primary_key=True)
     task_id = db.Column(db.String, unique=True)
