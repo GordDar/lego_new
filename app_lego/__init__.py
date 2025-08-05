@@ -26,11 +26,11 @@ DB_PASS = os.getenv("DB_PASS")
 DB_NAME = os.getenv("DB_NAME")
 INSTANCE_CONNECTION_NAME = os.getenv("INSTANCE_CONNECTION_NAME")
 
-app.config['SQLALCHEMY_DATABASE_URI'] = (
-    f"postgresql+psycopg2://{DB_USER}:{DB_PASS}@/"
-    f"{DB_NAME}?host=/cloudsql/{INSTANCE_CONNECTION_NAME}"
-)
-# app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://postgres:postgres@db:5432/mydb'
+# app.config['SQLALCHEMY_DATABASE_URI'] = (
+#     f"postgresql+psycopg2://{DB_USER}:{DB_PASS}@/"
+#     f"{DB_NAME}?host=/cloudsql/{INSTANCE_CONNECTION_NAME}"
+# )
+app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://postgres:postgres@db:5432/mydb'
 app.config['SECRET_KEY'] = 'very_secret_key'
 app.secret_key = 'very_secret_key'
 db = SQLAlchemy(app)
@@ -269,41 +269,42 @@ EMAIL_ADDRESS = 'legostorage@yandex.ru'  # ваш email
 EMAIL_PASSWORD = 'lego_storage_password' # ваш пароль
 
 def send_order_email(order, order_details):
-    subject = f"Новый заказ #{order.id}"
-    to_email = 'legobricks2025@gmail.com'
-    
-    body = (
-        f"Новый заказ №{order.id}\n"
-        f"Дата: {order.created_at}\n"
-        f"Клиент: {order.customer_name}\n"
-        f"Телефон: {order.customer_telephone}\n"
-        f"Почта: {order.customer_email}\n"
-        f"Доставка: {'Да' if order.dostavka else 'Нет'}\n"
-        f"Общая сумма: {order.total_price}\n\n"
-        "Позиции заказа:\n"
-    )
-    
-    for item in order_details:
-        body += (
-            f"- {item['description']} | "
-            f"Количество: {item['quantity_in_order']} | "
-            f"Цена за единицу: {item['unit_price']} | "
-            f"Итого: {item['total_price']}\n"
+    with app.app_context():
+        subject = f"Новый заказ #{order.id}"
+        to_email = 'legobricks2025@gmail.com'
+
+        body = (
+            f"Новый заказ №{order.id}\n"
+            f"Дата: {order.created_at}\n"
+            f"Клиент: {order.customer_name}\n"
+            f"Телефон: {order.customer_telephone}\n"
+            f"Почта: {order.customer_email}\n"
+            f"Доставка: {'Да' if order.dostavka else 'Нет'}\n"
+            f"Общая сумма: {order.total_price}\n\n"
+            "Позиции заказа:\n"
         )
-    
-    msg = MIMEText(body, 'plain', 'utf-8')
-    msg['Subject'] = subject
-    msg['From'] = EMAIL_ADDRESS
-    msg['To'] = to_email
-    
-    try:
-        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
-            server.starttls()
-            server.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
-            server.send_message(msg)
-        logging.info("Email успешно отправлен")
-    except Exception as e:
-        logging.error(f"Ошибка при отправке email: {e}")
+
+        for item in order_details:
+            body += (
+                f"- {item['description']} | "
+                f"Количество: {item['quantity_in_order']} | "
+                f"Цена за единицу: {item['unit_price']} | "
+                f"Итого: {item['total_price']}\n"
+            )
+
+        msg = MIMEText(body, 'plain', 'utf-8')
+        msg['Subject'] = subject
+        msg['From'] = EMAIL_ADDRESS
+        msg['To'] = to_email
+
+        try:
+            with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+                server.starttls()
+                server.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
+                server.send_message(msg)
+            logging.info("Email успешно отправлен")
+        except Exception as e:
+            logging.error(f"Ошибка при отправке email: {e}")
 
 
 
@@ -328,17 +329,17 @@ def submit_cart():
     catalog_items_cache = {}
     
     for item in items_data:
-        catalog_item_number = item['item_no']
+        item_id = item['id']
         quantity_requested = item.get('quantity', 1)
         
-        if catalog_item_number not in catalog_items_cache:
-            catalog_item = CatalogItem.query.filter_by(item_no=catalog_item_number).first()
+        if item_id not in catalog_items_cache:
+            catalog_item = CatalogItem.query.get(item_id)
             if not catalog_item:
                 print("a")
-                return jsonify({'error': f'Item with item number {catalog_item_number} не найден'}), 404
-            catalog_items_cache[catalog_item_number] = catalog_item
+                return jsonify({'error': f'Item with item id {item_id} not found'}), 404
+            catalog_items_cache[item_id] = catalog_item
         else:
-            catalog_item = catalog_items_cache[catalog_item_number]
+            catalog_item = catalog_items_cache[item_id]
         
         if catalog_item.quantity < quantity_requested:
             print("b")
@@ -502,35 +503,37 @@ def submit_cart():
 
 
     try:
-        with db.session.begin():
-            order = Order(
-                customer_name=customer_name,
-                customer_telephone=customer_telephone,
-                customer_email=customer_email,
-                dostavka=dostavka,
-                total_price=total_price,
-                created_at=datetime.utcnow()
+        order = Order(
+            customer_name=customer_name,
+            customer_telephone=customer_telephone,
+            customer_email=customer_email,
+            dostavka=dostavka,
+            total_price=total_price,
+            created_at=datetime.utcnow()
+        )
+        db.session.add(order)
+        db.session.flush()
+
+        for item in items_data:
+            item_id = item['id']
+            quantity_requested = item.get('quantity', 1)
+            catalog_item = catalog_items_cache[item_id]
+
+            order_item = OrderItem(
+                order=order,
+                catalog_item=catalog_item,
+                quantity=quantity_requested
             )
-            db.session.add(order)
-            db.session.flush()
+            db.session.add(order_item)
 
-            for item in items_data:
-                catalog_item_number = item['item_no']
-                quantity_requested = item.get('quantity', 1)
-                catalog_item = catalog_items_cache[catalog_item_number]
-                
-                order_item = OrderItem(
-                    order=order,
-                    catalog_item=catalog_item,
-                    quantity=quantity_requested
-                )
-                db.session.add(order_item)
+            # Обновляем количество на складе
+            catalog_item.quantity -= quantity_requested
 
-                # Обновляем количество на складе
-                catalog_item.quantity -= quantity_requested
+        db.session.commit()
 
         # После выхода из блока транзакции, она автоматически зафиксируется
-        send_order_email(order, order_details_for_email)
+        thread = threading.Thread(target=send_order_email, args=(order, order_details_for_email))
+        thread.start()
 
         return jsonify({'message': 'Order created', 'order_id': order.id})
 
@@ -717,9 +720,9 @@ import xml.etree.ElementTree as ET
 import tempfile
 
 def determine_item_type(item_no):
-    catalog_item = CatalogItem.query.filter_by(item_no=item_no).first()   
-    category_id = catalog_item.get('category_id')
-    category_name = Category.query.filter_by(id=category_id).first()
+    catalog_item = CatalogItem.query.filter_by(item_no=item_no).first()
+    category_id = catalog_item.category_id
+    category_name = Category.query.filter_by(id=category_id).first().name
     
     category_name_lower = category_name.lower()
     
@@ -762,10 +765,11 @@ def create_inventory_xml(items_data, color_dict):
     return INVENTORY
 
 def save_xml_to_file(xml_element):
-    with tempfile.NamedTemporaryFile(delete=False, suffix='.xml') as tmp_file:
-        tree = ET.ElementTree(xml_element)
-        tree.write(tmp_file.name, encoding='utf-8', xml_declaration=True)
-        return tmp_file.name
+    xml_bytes_io = io.BytesIO()
+    tree = ET.ElementTree(xml_element)
+    tree.write(xml_bytes_io, encoding='utf-8', xml_declaration=True)
+    xml_bytes_io.seek(0)
+    return xml_bytes_io
 
 
 
@@ -780,8 +784,13 @@ def handle_save_as_wanted_list():
     
     try:
        xml_element= create_inventory_xml(items_data=items_data, color_dict=color_dict)
-       xml_filename= save_xml_to_file(xml_element)
-       return jsonify({'status': 'success', 'file_path': xml_filename}), 200
+       xml_bytes_io= save_xml_to_file(xml_element)
+       return send_file(
+            xml_bytes_io,
+            download_name="wanted_list.xml",
+            as_attachment=True,
+            mimetype='application/xml'
+        )
     
     except Exception as e:
        logging.exception("Ошибка при создании XML")
@@ -873,6 +882,7 @@ def get_orders():
             'customer_email': order.customer_email,
             'dostavka': order.dostavka,
             'total_price': order.total_price,
+            'comment': order.comment,
             'status': order.status,  # добавлено
             'created_at': (order.created_at or datetime.now()).isoformat(),  # добавлено
             'items': items_list,
@@ -927,7 +937,7 @@ def delete_order(order_id):
 def create_initial_settings():
     initial_settings = [
         {'settings_name': 'byn', 'settings_value': 3},
-        {'settings_name': 'rub', 'settings_value': 3},
+        {'settings_name': 'rub', 'settings_value': 82},
         {'settings_name': 'min', 'settings_value': 15}
     ]
 
@@ -946,6 +956,10 @@ def create_initial_settings():
 def get_settings():
     settings = Settings.query.all()
     result = {setting.settings_name: setting.settings_value for setting in settings}
+    if result == {}:
+        create_initial_settings()
+        settings = Settings.query.all()
+        result = {setting.settings_name: setting.settings_value for setting in settings}
     return jsonify(result)
 
 @app.route('/admin/settings', methods=['POST'])
@@ -1024,7 +1038,7 @@ def build_nested_structure(categories):
                 current_level = current_level[part]
     return structure
 
-@app.get("/category-structure")
+@app.get("/category-structure-old")
 def get_category_structure():
     categories = Category.query.all()
     nested_structure = build_nested_structure(categories)
@@ -1049,7 +1063,8 @@ def get_parts_subcategories(categories):
                 current_dict = current_dict[part]
     return parts_subcategories
 
-@app.get("/category-parts")
+# category-parts
+@app.get("/category-structure")
 def get_category_structure_parts():
     categories = Category.query.all()
     subcategories_list = get_parts_subcategories(categories)
@@ -1093,6 +1108,7 @@ def get_order(order_id):
         "customer_name": order.customer_name,
         "customer_telephone": order.customer_telephone,
         "customer_email": order.customer_email,
+        "comment": order.comment,
         "dostavka": order.dostavka,
         "total_price": order.total_price,
         "items": items_list,
@@ -1136,7 +1152,7 @@ def send_email_with_attachment(subject, body_text, filename):
 
 
 
-@app.route('/save_<int:order_id>', methods=['POST', 'GET'])
+@app.route('/save_as_wanted_list/<int:order_id>', methods=['POST', 'GET'])
 def save_order_as_wanted_list(order_id):
     order = Order.query.filter(Order.id == order_id).first()
     if not order:
@@ -1145,14 +1161,21 @@ def save_order_as_wanted_list(order_id):
     items_list = get_order_items_list(order)
 
     xml_element = create_inventory_xml(items_data=items_list, color_dict=color_dict)
+
+    xml_bytes_io = save_xml_to_file(xml_element)
+
+    return send_file(
+        xml_bytes_io,
+        download_name="wanted_list.xml",
+        as_attachment=True,
+        mimetype='application/xml'
+    )
     
-    xml_filename = save_xml_to_file(xml_element)
+    # body_text = f'Здравствуйте,\n\nПрикреплен XML-файл с информацией о товарах заказа.\n\nНомер заказа: {order_id}'
+    #
+    # send_email_with_attachment('Заказ - информация о товарах', body_text, xml_filename)
     
-    body_text = f'Здравствуйте,\n\nПрикреплен XML-файл с информацией о товарах заказа.\n\nНомер заказа: {order_id}'
-    
-    send_email_with_attachment('Заказ - информация о товарах', body_text, xml_filename)
-    
-    return {'status': 'success'}, 200
+    # return {'status': 'success'}, 200
 
 
 
@@ -1347,10 +1370,8 @@ single_id_results = []
 
 
 # !!!!!!!!!!!!!!!!!!  Всё по фоновой работе загрузки бьазы данных
-# pip install fastapi uvicorn sqlalchemy psycopg2-binary????
+# pip install uvicorn sqlalchemy psycopg2-binary????
 import uuid
-from fastapi import FastAPI, BackgroundTasks, Request
-from fastapi.responses import JSONResponse
 from typing import Dict
 import threading
 
@@ -1373,134 +1394,135 @@ def update_task_status(task_id: str, status: str, message: str):
         task_statuses[task_id]["message"] = message
 
 
-
 def process_db_add(file_name: str, task_id: str):
-    # Обновляем статус задачи на "processing"
-    update_task_status(task_id, status='processing', message='Загрузка началась')
-    try:
-        # Получение содержимого файла из облака
-        bucket = storage_client.bucket(BUCKET_NAME)
-        blob = bucket.blob(file_name)
-        content = blob.download_as_text(encoding='utf-8')
+    with app.app_context():
+        # Обновляем статус задачи на "processing"
+        update_task_status(task_id, status='processing', message='Загрузка началась')
+        try:
+            # Получение содержимого файла из облака
+            bucket = storage_client.bucket(BUCKET_NAME)
+            blob = bucket.blob(file_name)
+            content = blob.download_as_text(encoding='utf-8')
 
-        reader = csv.DictReader(io.StringIO(content))
+            reader = csv.DictReader(io.StringIO(content))
 
-        # Очистка таблиц перед загрузкой новых данных
-        db.session.query(OrderItem).delete()
-        db.session.query(MoreId).delete()
-        db.session.query(Images).delete()
-        db.session.query(CatalogItem).delete()
-        db.session.query(Category).delete()
-        db.session.commit()
+            # Очистка таблиц перед загрузкой новых данных
+            db.session.query(OrderItem).delete()
+            db.session.query(MoreId).delete()
+            db.session.query(Images).delete()
+            db.session.query(CatalogItem).delete()
+            db.session.query(Category).delete()
+            db.session.commit()
 
-        results_id = {}
-        results_dict = {}
-        single_id_results = []
+            results_id = {}
+            results_dict = {}
+            single_id_results = []
 
-        for row in reader:
-            row = {k.strip(): v for k,v in row.items()}
+            for row in reader:
+                row = {k.strip(): v for k,v in row.items()}
 
-            item_no = row.get('Item No', '').strip()
-            color_name = row.get('Color', '').strip()
-            color_number = color_dict.get(color_name, '0')
+                item_no = row.get('Item No', '').strip()
+                color_name = row.get('Color', '').strip()
+                color_number = color_dict.get(color_name, '0')
 
-            if color_name == 'n/a':
-                image_url = f"https://img.bricklink.com/ItemImage/IN/{color_number}/{item_no}.png"
-            else:
-                image_url = f"https://img.bricklink.com/ItemImage/PN/{color_number}/{item_no}.png"
-
-            # Добавляем изображение
-            new_image = Images(ids=item_no, color=color_name, image_url=image_url)
-            db.session.add(new_image)
-
-            # Получение старых ID для товара
-            if item_no not in results_id:
-                old_id_result = get_old_id_for_item(driver=None, item_no=item_no)  # Передайте драйвер или уберите его если не нужен
-                if old_id_result:
-                    ids_list = [id_str.strip() for id_str in old_id_result.split(',')]
-                    results_id[item_no] = ids_list
+                if color_name == 'n/a':
+                    image_url = f"https://img.bricklink.com/ItemImage/IN/{color_number}/{item_no}.png"
                 else:
-                    results_id[item_no] = []
+                    image_url = f"https://img.bricklink.com/ItemImage/PN/{color_number}/{item_no}.png"
 
-            # Заполняем результаты по старым ID
-            for item_key, ids_list in results_id.items():
-                if ids_list:
-                    for id_value in ids_list:
-                        single_id_results.append({'Item No': item_key, 'Old ID': id_value})
-                else:
-                    single_id_results.append({'Item No': item_key, 'Old ID': None})
+                # Добавляем изображение
+                new_image = Images(ids=item_no, color=color_name, image_url=image_url)
+                db.session.add(new_image)
 
-            # Добавляем записи в MoreId
-            for entry in single_id_results:
-                new_record = MoreId(ids=entry['Item No'], old_id=entry['Old ID'])
-                db.session.add(new_record)
+                # Получение старых ID для товара
+                if item_no not in results_id:
+                    old_id_result = get_old_id_for_item(driver=None, item_no=item_no)  # Передайте драйвер или уберите его если не нужен
+                    if old_id_result:
+                        ids_list = [id_str.strip() for id_str in old_id_result.split(',')]
+                        results_id[item_no] = ids_list
+                    else:
+                        results_id[item_no] = []
 
-            # Обработка категории
-            category_name = row['Category'].strip()
-            category_obj, _ = get_or_create(db.session, Category, name=category_name)
+                # Заполняем результаты по старым ID
+                for item_key, ids_list in results_id.items():
+                    if ids_list:
+                        for id_value in ids_list:
+                            single_id_results.append({'Item No': item_key, 'Old ID': id_value})
+                    else:
+                        single_id_results.append({'Item No': item_key, 'Old ID': None})
 
-            def parse_float(value):
-                try:
-                    return float(value.replace('$', '').strip()) if value else None
-                except:
-                    return None
+                # Добавляем записи в MoreId
+                for entry in single_id_results:
+                    new_record = MoreId(ids=entry['Item No'], old_id=entry['Old ID'])
+                    db.session.add(new_record)
 
-            def parse_int(value):
-                try:
-                    return int(value) if value else None
-                except:
-                    return None
+                # Обработка категории
+                category_name = row['Category'].strip()
+                category_obj, _ = get_or_create(db.session, Category, name=category_name)
 
-            def str_to_bool(val):
-                return val.lower() in ('true', '1', 'yes')
+                def parse_float(value):
+                    try:
+                        return float(value.replace('$', '').strip()) if value else None
+                    except:
+                        return None
 
-            # Создаем объект CatalogItem
-            item = CatalogItem(
-                lot_id=row['Lot ID'].strip(),
-                color=row['Color'].strip(),
-                category_id=category_obj.id,
-                condition=row.get('Condition', '').strip(),
-                sub_condition=row.get('Sub-Condition', '').strip(),
-                description=row.get('Description', '').strip(),
-                remarks=row.get('Remarks', '').strip(),
-                price=parse_float(row.get('Price')),
-                quantity=parse_int(row.get('Quantity')),
-                bulk=str_to_bool(row.get('Bulk', 'False')),
-                sale=str_to_bool(row.get('Sale', 'False')),
-                url=image_url,
-                item_no=item_no,
-                tier_qty_1=parse_int(row['Tier Qty 1']),
-                tier_price_1=parse_float(row['Tier Price 1']),
-                tier_qty_2=parse_int(row['Tier Qty 2']),
-                tier_price_2=parse_float(row['Tier Price 2']),
-                tier_qty_3=parse_int(row['Tier Qty 3']),
-                tier_price_3=parse_float(row['Tier Price 3']),
-                reserved_for=row.get('Reserved For', '').strip(),
-                stockroom=row.get('Stockroom', '').strip(),
-                retain=str_to_bool(row.get('Retain', 'False')),
-                super_lot_id=row.get('Super Lot ID', '').strip(),
-                super_lot_qty=parse_int(row.get('Super Lot Qty')),
-                weight=parse_float(row.get('Weight')),
-                extended_description=row.get('Extended Description', '').strip(),
-                
-                date_added=datetime.strptime(row['Date Added'], '%m/%d/%Y') if row.get('Date Added') else None,
-                
-                date_last_sold=datetime.strptime(row['Date Last Sold'], '%Y-%m-%d') if row.get('Date Last Sold') else None,
-                
-                currency=row.get('Currency', '').strip()
-            )
-            db.session.add(item)
+                def parse_int(value):
+                    try:
+                        return int(value) if value else None
+                    except:
+                        return None
 
-        db.session.commit()
+                def str_to_bool(val):
+                    return val.lower() in ('true', '1', 'yes')
 
-        # Обновляем статус задачи на "completed"
-        update_task_status(task_id, status='completed', message='Все действия выполнены')
-    except Exception as e:
-        db.session.rollback()
-        update_task_status(task_id, status='error', message=str(e))
-    finally:
-        # Если есть драйвер или другие ресурсы - закрываем их тут
-        driver.quit()
+                # Создаем объект CatalogItem
+                item = CatalogItem(
+                    lot_id=row['Lot ID'].strip(),
+                    color=row['Color'].strip(),
+                    category_id=category_obj.id,
+                    condition=row.get('Condition', '').strip(),
+                    sub_condition=row.get('Sub-Condition', '').strip(),
+                    description=row.get('Description', '').strip(),
+                    remarks=row.get('Remarks', '').strip(),
+                    price=parse_float(row.get('Price')),
+                    quantity=parse_int(row.get('Quantity')),
+                    bulk=str_to_bool(row.get('Bulk', 'False')),
+                    sale=str_to_bool(row.get('Sale', 'False')),
+                    url=image_url,
+                    item_no=item_no,
+                    tier_qty_1=parse_int(row['Tier Qty 1']),
+                    tier_price_1=parse_float(row['Tier Price 1']),
+                    tier_qty_2=parse_int(row['Tier Qty 2']),
+                    tier_price_2=parse_float(row['Tier Price 2']),
+                    tier_qty_3=parse_int(row['Tier Qty 3']),
+                    tier_price_3=parse_float(row['Tier Price 3']),
+                    reserved_for=row.get('Reserved For', '').strip(),
+                    stockroom=row.get('Stockroom', '').strip(),
+                    retain=str_to_bool(row.get('Retain', 'False')),
+                    super_lot_id=row.get('Super Lot ID', '').strip(),
+                    super_lot_qty=parse_int(row.get('Super Lot Qty')),
+                    weight=parse_float(row.get('Weight')),
+                    extended_description=row.get('Extended Description', '').strip(),
+
+                    date_added=datetime.strptime(row['Date Added'], '%m/%d/%Y') if row.get('Date Added') else None,
+
+                    date_last_sold=datetime.strptime(row['Date Last Sold'], '%Y-%m-%d') if row.get('Date Last Sold') else None,
+
+                    currency=row.get('Currency', '').strip()
+                )
+                db.session.add(item)
+
+            db.session.commit()
+
+            # Обновляем статус задачи на "completed"
+            update_task_status(task_id, status='completed', message='Все действия выполнены')
+        except Exception as e:
+            print(e)
+            db.session.rollback()
+            update_task_status(task_id, status='error', message=str(e))
+        finally:
+            # Если есть драйвер или другие ресурсы - закрываем их тут
+            driver.quit()
 
 
 @app.route("/db_add", methods=["POST"])
