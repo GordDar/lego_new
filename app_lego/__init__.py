@@ -203,18 +203,43 @@ def get_catalog():
 
     query = query.order_by(CatalogItem.id)
     pagination = query.paginate(page=page, per_page=per_page, error_out=False)
+    
+    # import requests
 
+    # DEFAULT_IMAGE_PATH = "/static/default.jpg"
+    # items = []
+    # for item in pagination.items:
+    #     image_url = item.url
+    #     try:
+    #         response = requests.head(image_url, timeout=5)
+    #         if response.status_code != 200:
+    #             image_url = DEFAULT_IMAGE_PATH
+    #     except requests.RequestException:
+    #         image_url = DEFAULT_IMAGE_PATH
+
+    #     items.append({
+    #         'id': item.id,
+    #         'item_no': item.item_no,
+    #         'url': image_url,
+    #         'color': item.color,
+    #         'description': item.description,
+    #         'price': item.price,
+    #         'quantity': item.quantity,
+    #         'category_name': item.category.name if item.category else None,
+    #         'remarks': item.remarks
+    #     })
+    
     items = [{
-        'id': item.id,
-        'item_no': item.item_no,
-        'url': item.url,
-        'color': item.color,
-        'description': item.description,
-        'price': item.price,
-        'quantity': item.quantity,
-        'category_name': item.category.name if item.category else None,
-        'remarks': item.remarks
-    } for item in pagination.items]
+            'id': item.id,
+            'item_no': item.item_no,
+            'url': item.url,
+            'color': item.color,
+            'description': item.description,
+            'price': item.price,
+            'quantity': item.quantity,
+            'category_name': item.category.name if item.category else None,
+            'remarks': item.remarks
+        } for item in pagination.items]
 
     return jsonify({
         'items': items,
@@ -564,127 +589,127 @@ def submit_cart():
     
     
     
-import io
-from flask import request, jsonify, send_file
-from weasyprint import HTML, CSS
+# import io
+# from flask import request, jsonify, send_file
+# from weasyprint import HTML, CSS
 
-@app.route('/download_pdf')
-def download_pdf():
-    data = request.get_json()
-    items_data = data.get('items')
+# @app.route('/download_pdf')
+# def download_pdf():
+#     data = request.get_json()
+#     items_data = data.get('items')
 
-    # Предварительно ищем все CatalogItem один раз для повышения эффективности
-    catalog_items_cache = {}
-    order_details_for_email = []
-    total_price = 0
+#     # Предварительно ищем все CatalogItem один раз для повышения эффективности
+#     catalog_items_cache = {}
+#     order_details_for_email = []
+#     total_price = 0
 
-    for item in items_data:
-        catalog_item_number = item['item_no']
-        quantity_requested = item.get('quantity', 1)
+#     for item in items_data:
+#         catalog_item_number = item['item_no']
+#         quantity_requested = item.get('quantity', 1)
 
-        if catalog_item_number not in catalog_items_cache:
-            catalog_item = CatalogItem.query.filter_by(item_no=catalog_item_number).first()
-            if not catalog_item:
-                return jsonify({'error': f'Item with item number {catalog_item_number} не найден'}), 404
-            catalog_items_cache[catalog_item_number] = catalog_item
-        else:
-            catalog_item = catalog_items_cache[catalog_item_number]
+#         if catalog_item_number not in catalog_items_cache:
+#             catalog_item = CatalogItem.query.filter_by(item_no=catalog_item_number).first()
+#             if not catalog_item:
+#                 return jsonify({'error': f'Item with item number {catalog_item_number} не найден'}), 404
+#             catalog_items_cache[catalog_item_number] = catalog_item
+#         else:
+#             catalog_item = catalog_items_cache[catalog_item_number]
 
-        price_per_unit = getattr(catalog_item, 'price', 0)
-        total_price += price_per_unit * quantity_requested
+#         price_per_unit = getattr(catalog_item, 'price', 0)
+#         total_price += price_per_unit * quantity_requested
 
-        order_details_for_email.append({
-            'description': catalog_item.description,
-            'image': catalog_item.url,
-            'quantity_in_order': quantity_requested,
-            'unit_price': price_per_unit,
-            'total_price': price_per_unit * quantity_requested
-        })
+#         order_details_for_email.append({
+#             'description': catalog_item.description,
+#             'image': catalog_item.url,
+#             'quantity_in_order': quantity_requested,
+#             'unit_price': price_per_unit,
+#             'total_price': price_per_unit * quantity_requested
+#         })
 
-    total_price_value = sum(item['total_price'] for item in order_details_for_email)
+#     total_price_value = sum(item['total_price'] for item in order_details_for_email)
 
-    # Создаем HTML-шаблон
-    html_content = f"""
-    <html>
-    <head>
-        <meta charset="UTF-8">
-        <style>
-            body {{
-                font-family: DejaVu Sans, Arial, sans-serif;
-                margin: 40px;
-            }}
-            h1 {{
-                text-align: center;
-                font-size: 24px;
-                margin-bottom: 20px;
-            }}
-            table {{
-                width: 100%;
-                border-collapse: collapse;
-                margin-bottom: 20px;
-            }}
-            th, td {{
-                border: 1px solid #000;
-                padding: 8px;
-                text-align: left;
-                font-size: 14px;
-            }}
-            th {{
-                background-color: #f0f0f0;
-            }}
-            .total {{
-                text-align: right;
-                font-weight: bold;
-                font-size: 16px;
-                margin-top: 10px;
-            }}
-        </style>
-    </head>
-    <body>
-        <h1>Детали заказа</h1>
-        <table>
-            <thead>
-                <tr>
-                    <th>Описание</th>
-                    <th>Кол-во</th>
-                    <th>Цена</th>
-                    <th>Всего</th>
-                </tr>
-            </thead>
-            <tbody>
-    """
+#     # Создаем HTML-шаблон
+#     html_content = f"""
+#     <html>
+#     <head>
+#         <meta charset="UTF-8">
+#         <style>
+#             body {{
+#                 font-family: DejaVu Sans, Arial, sans-serif;
+#                 margin: 40px;
+#             }}
+#             h1 {{
+#                 text-align: center;
+#                 font-size: 24px;
+#                 margin-bottom: 20px;
+#             }}
+#             table {{
+#                 width: 100%;
+#                 border-collapse: collapse;
+#                 margin-bottom: 20px;
+#             }}
+#             th, td {{
+#                 border: 1px solid #000;
+#                 padding: 8px;
+#                 text-align: left;
+#                 font-size: 14px;
+#             }}
+#             th {{
+#                 background-color: #f0f0f0;
+#             }}
+#             .total {{
+#                 text-align: right;
+#                 font-weight: bold;
+#                 font-size: 16px;
+#                 margin-top: 10px;
+#             }}
+#         </style>
+#     </head>
+#     <body>
+#         <h1>Детали заказа</h1>
+#         <table>
+#             <thead>
+#                 <tr>
+#                     <th>Описание</th>
+#                     <th>Кол-во</th>
+#                     <th>Цена</th>
+#                     <th>Всего</th>
+#                 </tr>
+#             </thead>
+#             <tbody>
+#     """
 
-    for item in order_details_for_email:
-        # Если есть изображение и его можно вставить как URL или локальный путь - вставьте тег img.
-        # Для примера вставим только описание и цены.
-        html_content += f"""
-                <tr>
-                    <td>{item['description']}</td>
-                    <td>{item['quantity_in_order']}</td>
-                    <td>{item['unit_price']:.2f}</td>
-                    <td>{item['total_price']:.2f}</td>
-                </tr>
-        """
+#     for item in order_details_for_email:
+#         # Если есть изображение и его можно вставить как URL или локальный путь - вставьте тег img.
+#         # Для примера вставим только описание и цены.
+#         html_content += f"""
+#                 <tr>
+#                     <td>{item['description']}</td>
+#                     <td>{item['quantity_in_order']}</td>
+#                     <td>{item['unit_price']:.2f}</td>
+#                     <td>{item['total_price']:.2f}</td>
+#                 </tr>
+#         """
 
-    html_content += f"""
-            </tbody>
-        </table>
-        <div class="total">Общая сумма: {total_price_value:.2f}</div>
-    </body>
-    </html>
-    """
+#     html_content += f"""
+#             </tbody>
+#         </table>
+#         <div class="total">Общая сумма: {total_price_value:.2f}</div>
+#     </body>
+#     </html>
+#     """
 
-    # Генерируем PDF из HTML
-    pdf_bytes = HTML(string=html_content).write_pdf()
+#     # Генерируем PDF из HTML
+#     pdf_bytes = HTML(string=html_content).write_pdf()
 
-    buffer = io.BytesIO(pdf_bytes)
+#     buffer = io.BytesIO(pdf_bytes)
     
-    return send_file(
-        buffer,
-        as_attachment=True,
-        download_name="order_details.pdf",
-        mimetype='application/pdf'
-    )
+#     return send_file(
+#         buffer,
+#         as_attachment=True,
+#         download_name="order_details.pdf",
+#         mimetype='application/pdf'
+#     )
 
 
 
@@ -719,7 +744,7 @@ def create_inventory_xml(items_data, color_dict):
         
         item_type = determine_item_type(item_no)
         
-        color_name = item.get('color_name')
+        color_name = item.get('color')
         color_code_value = ''
         
         if color_name and color_name in color_dict:
@@ -1518,15 +1543,15 @@ def process_db_add(file_name: str, task_id: str):
             db.session.commit()
 
             for row in reader:
-                row = {k.strip(): v for k,v in row.items()}
+                row = {k.strip() if k is not None else '': v for k, v in row.items()}
 
                 item_no = row.get('Item No', '').strip()
                 color_name = row.get('Color', '').strip()
-
+                category_name = row['Category'].strip()
                 # Получение цвета по имени (предположим есть словарь color_dict)
                 color_number = color_dict.get(color_name, '0')
 
-                if color_name == 'n/a':
+                if "Instruction" in category_name:
                     image_url = f"https://img.bricklink.com/ItemImage/IN/{color_number}/{item_no}.png"
                 else:
                     image_url = f"https://img.bricklink.com/ItemImage/PN/{color_number}/{item_no}.png"
@@ -1536,7 +1561,7 @@ def process_db_add(file_name: str, task_id: str):
                 db.session.add(new_image)
 
                 # Обработка категории
-                category_name = row['Category'].strip()
+                
                 category_obj = add_category_if_not_exists(db.session, category_name)
 
                 def parse_float(value):
@@ -1933,22 +1958,24 @@ def parse_xml_from_gcs():
         not_found_items = []
         for item in items:
             item_id_text = item.find('ITEMID').text
-            # item_type = item.find('ITEMTYPE').text
-            # color = item.find('COLOR').text
-            # max_price_text = item.find('MAXPRICE').text
-            # min_qty_text = item.find('MINQTY').text
-            # condition = item.find('CONDITION').text
-            # notify = item.find('NOTIFY').text
+            color_value = item.find('COLOR').text  # например, "123456"
+            
+            # Находим название цвета по значению из словаря
+            color_key = None
+            for key, value in color_dict.items():
+                if value == color_value:
+                    color_key = key
+                    break
+            
+            # Строим запрос с фильтром по item_no
+            query = CatalogItem.query.filter_by(item_no=item_id_text)
+            
+            # Если нашли название цвета, добавляем фильтр по нему
+            if color_key:
+                query = query.filter_by(color=color_key)
 
-            # Преобразуем числовые значения
-            # try:
-            #     max_price = float(max_price_text)
-            #     min_qty = int(min_qty_text)
-            # except (ValueError, AttributeError):
-            #     print(f"Некорректные данные для ITEMID={item_id_text}")
-            #     continue
-
-            existing_item = CatalogItem.query.filter_by(item_no=item_id_text).first()
+            
+            existing_item = query.first()
 
             if existing_item:
                 found_items.append({
