@@ -161,12 +161,16 @@ def get_catalog():
     search = request.args.get('search', '', type=str)
     search_category = request.args.get('category', '', type=str)
     page = request.args.get('page', 1, type=int)
-    per_page = request.args.get('per_page', 20, type=int)
+    per_page = request.args.get('per_page', 30, type=int)
     
-    query = CatalogItem.query.join(Category, CatalogItem.category_id == Category.id).filter(Category.name.ilike("%Parts%"))
+    query = CatalogItem.query.join(Category, CatalogItem.category_id == Category.id)
+        # .filter(Category.name.ilike("%Parts%"))
 
     if search_category:
-        category_obj = Category.query.filter(Category.name == search_category).first()
+        if search_category == 'Parts':
+            category_obj = Category.query.filter(Category.name.ilike(f"{search_category}%")).first()
+        else:
+            category_obj = Category.query.filter(Category.name == search_category).first()
         if category_obj:
             category_id = category_obj.id
             # далее используйте category_id для фильтрации
@@ -205,7 +209,7 @@ def get_catalog():
     pagination = query.paginate(page=page, per_page=per_page, error_out=False)
     
     # import requests
-
+    #
     # DEFAULT_IMAGE_PATH = "/static/default.jpg"
     # items = []
     # for item in pagination.items:
@@ -216,7 +220,7 @@ def get_catalog():
     #             image_url = DEFAULT_IMAGE_PATH
     #     except requests.RequestException:
     #         image_url = DEFAULT_IMAGE_PATH
-
+    #
     #     items.append({
     #         'id': item.id,
     #         'item_no': item.item_no,
@@ -232,7 +236,7 @@ def get_catalog():
     items = [{
             'id': item.id,
             'item_no': item.item_no,
-            'url': item.url,
+            'url': item.url or 'https://storage.googleapis.com/lego-bricks-app-frontend/default.jpg',
             'color': item.color,
             'description': item.description,
             'price': item.price,
@@ -589,127 +593,129 @@ def submit_cart():
     
     
     
-# import io
-# from flask import request, jsonify, send_file
-# from weasyprint import HTML, CSS
+import io
+from flask import request, jsonify, send_file
+from weasyprint import HTML, CSS
 
-# @app.route('/download_pdf')
-# def download_pdf():
-#     data = request.get_json()
-#     items_data = data.get('items')
+@app.route('/download_pdf', methods=['POST'])
+def download_pdf():
+    data = request.get_json()
+    items_data = data.get('items')
 
-#     # Предварительно ищем все CatalogItem один раз для повышения эффективности
-#     catalog_items_cache = {}
-#     order_details_for_email = []
-#     total_price = 0
+    # Предварительно ищем все CatalogItem один раз для повышения эффективности
+    catalog_items_cache = {}
+    order_details_for_email = []
+    total_price = 0
 
-#     for item in items_data:
-#         catalog_item_number = item['item_no']
-#         quantity_requested = item.get('quantity', 1)
+    for item in items_data:
+        item_id = item['id']
+        quantity_requested = item.get('quantity', 1)
 
-#         if catalog_item_number not in catalog_items_cache:
-#             catalog_item = CatalogItem.query.filter_by(item_no=catalog_item_number).first()
-#             if not catalog_item:
-#                 return jsonify({'error': f'Item with item number {catalog_item_number} не найден'}), 404
-#             catalog_items_cache[catalog_item_number] = catalog_item
-#         else:
-#             catalog_item = catalog_items_cache[catalog_item_number]
+        if item_id not in catalog_items_cache:
+            catalog_item = CatalogItem.query.get(item_id)
+            if not catalog_item:
+                return jsonify({'error': f'Item with id {item_id} не найден'}), 404
+            catalog_items_cache[item_id] = catalog_item
+        else:
+            catalog_item = catalog_items_cache[item_id]
 
-#         price_per_unit = getattr(catalog_item, 'price', 0)
-#         total_price += price_per_unit * quantity_requested
+        price_per_unit = getattr(catalog_item, 'price', 0)
+        total_price += price_per_unit * quantity_requested
 
-#         order_details_for_email.append({
-#             'description': catalog_item.description,
-#             'image': catalog_item.url,
-#             'quantity_in_order': quantity_requested,
-#             'unit_price': price_per_unit,
-#             'total_price': price_per_unit * quantity_requested
-#         })
+        order_details_for_email.append({
+            'description': catalog_item.description,
+            'image': catalog_item.url,
+            'quantity_in_order': quantity_requested,
+            'unit_price': price_per_unit,
+            'total_price': price_per_unit * quantity_requested
+        })
 
-#     total_price_value = sum(item['total_price'] for item in order_details_for_email)
+    total_price_value = sum(item['total_price'] for item in order_details_for_email)
 
-#     # Создаем HTML-шаблон
-#     html_content = f"""
-#     <html>
-#     <head>
-#         <meta charset="UTF-8">
-#         <style>
-#             body {{
-#                 font-family: DejaVu Sans, Arial, sans-serif;
-#                 margin: 40px;
-#             }}
-#             h1 {{
-#                 text-align: center;
-#                 font-size: 24px;
-#                 margin-bottom: 20px;
-#             }}
-#             table {{
-#                 width: 100%;
-#                 border-collapse: collapse;
-#                 margin-bottom: 20px;
-#             }}
-#             th, td {{
-#                 border: 1px solid #000;
-#                 padding: 8px;
-#                 text-align: left;
-#                 font-size: 14px;
-#             }}
-#             th {{
-#                 background-color: #f0f0f0;
-#             }}
-#             .total {{
-#                 text-align: right;
-#                 font-weight: bold;
-#                 font-size: 16px;
-#                 margin-top: 10px;
-#             }}
-#         </style>
-#     </head>
-#     <body>
-#         <h1>Детали заказа</h1>
-#         <table>
-#             <thead>
-#                 <tr>
-#                     <th>Описание</th>
-#                     <th>Кол-во</th>
-#                     <th>Цена</th>
-#                     <th>Всего</th>
-#                 </tr>
-#             </thead>
-#             <tbody>
-#     """
+    # Создаем HTML-шаблон
+    html_content = f"""
+    <html>
+    <head>
+        <meta charset="UTF-8">
+        <style>
+            body {{
+                font-family: DejaVu Sans, Arial, sans-serif;
+                margin: 40px;
+            }}
+            h1 {{
+                text-align: center;
+                font-size: 24px;
+                margin-bottom: 20px;
+            }}
+            table {{
+                width: 100%;
+                border-collapse: collapse;
+                margin-bottom: 20px;
+            }}
+            th, td {{
+                border: 1px solid #000;
+                padding: 8px;
+                text-align: left;
+                font-size: 14px;
+            }}
+            th {{
+                background-color: #f0f0f0;
+            }}
+            .total {{
+                text-align: right;
+                font-weight: bold;
+                font-size: 16px;
+                margin-top: 10px;
+            }}
+        </style>
+    </head>
+    <body>
+        <h1>Детали заказа</h1>
+        <table>
+            <thead>
+                <tr>
+                    <th>Изображение</th>
+                    <th>Описание</th>
+                    <th>Кол-во</th>
+                    <th>Цена</th>
+                    <th>Всего</th>
+                </tr>
+            </thead>
+            <tbody>
+    """
 
-#     for item in order_details_for_email:
-#         # Если есть изображение и его можно вставить как URL или локальный путь - вставьте тег img.
-#         # Для примера вставим только описание и цены.
-#         html_content += f"""
-#                 <tr>
-#                     <td>{item['description']}</td>
-#                     <td>{item['quantity_in_order']}</td>
-#                     <td>{item['unit_price']:.2f}</td>
-#                     <td>{item['total_price']:.2f}</td>
-#                 </tr>
-#         """
+    for item in order_details_for_email:
+        # Если есть изображение и его можно вставить как URL или локальный путь - вставьте тег img.
+        # Для примера вставим только описание и цены.
+        html_content += f"""
+                <tr>
+                    <td><img src="{item['image']}" alt="image" /></td>
+                    <td>{item['description']}</td>
+                    <td>{item['quantity_in_order']}</td>
+                    <td>{item['unit_price']:.2f}</td>
+                    <td>{item['total_price']:.2f}</td>
+                </tr>
+        """
 
-#     html_content += f"""
-#             </tbody>
-#         </table>
-#         <div class="total">Общая сумма: {total_price_value:.2f}</div>
-#     </body>
-#     </html>
-#     """
+    html_content += f"""
+            </tbody>
+        </table>
+        <div class="total">Общая сумма: {total_price_value:.2f}</div>
+    </body>
+    </html>
+    """
 
-#     # Генерируем PDF из HTML
-#     pdf_bytes = HTML(string=html_content).write_pdf()
+    # Генерируем PDF из HTML
+    pdf_bytes = HTML(string=html_content).write_pdf()
 
-#     buffer = io.BytesIO(pdf_bytes)
+    buffer = io.BytesIO(pdf_bytes)
     
-#     return send_file(
-#         buffer,
-#         as_attachment=True,
-#         download_name="order_details.pdf",
-#         mimetype='application/pdf'
-#     )
+    return send_file(
+        buffer,
+        as_attachment=True,
+        download_name="order_details.pdf",
+        mimetype='application/pdf'
+    )
 
 
 
@@ -1012,7 +1018,7 @@ def build_nested_structure(categories):
                 current_level = current_level[part]
     return structure
 
-@app.get("/category-structure-old")
+@app.get("/category-structure")
 def get_category_structure():
     categories = Category.query.all()
     nested_structure = build_nested_structure(categories)
@@ -1038,7 +1044,7 @@ def get_parts_subcategories(categories):
     return parts_subcategories
 
 # category-parts
-@app.get("/category-structure")
+@app.get("/category-structure-parts")
 def get_category_structure_parts():
     categories = Category.query.all()
     subcategories_list = get_parts_subcategories(categories)
@@ -1286,53 +1292,53 @@ import threading
 
 
 
-task_statuses: Dict[str, Dict[str, str]] = {}
-
-def create_task_status(task_id: str, status: str, message: str):
-    task_statuses[task_id] = {
-        "status": status,
-        "message": message
-    }
-
-def get_task_status_by_id(task_id: str):
-    return task_statuses.get(task_id)
-
-def update_task_status(task_id: str, status: str, message: str):
-    if task_id in task_statuses:
-        task_statuses[task_id]["status"] = status
-        task_statuses[task_id]["message"] = message
-
-# from sqlalchemy.exc import NoResultFound
+# task_statuses: Dict[str, Dict[str, str]] = {}
 
 # def create_task_status(task_id: str, status: str, message: str):
-#     # Создаем новый объект TaskStatus и добавляем его в базу
-#     new_task_status = TaskStatus(task_id=task_id, status=status, message=message)
-#     db.session.add(new_task_status)
-#     db.session.commit()
+#     task_statuses[task_id] = {
+#         "status": status,
+#         "message": message
+#     }
 
 # def get_task_status_by_id(task_id: str):
-#     # Пытаемся получить статус по task_id
-#     try:
-#         task_status = db.session.query(TaskStatus).filter_by(task_id=task_id).one()
-#         return {
-#             "task_id": task_status.task_id,
-#             "status": task_status.status,
-#             "message": task_status.message
-#         }
-#     except NoResultFound:
-#         return None  # Или можно вернуть {} или другое значение по умолчанию
-
+#     return task_statuses.get(task_id)
+#
 # def update_task_status(task_id: str, status: str, message: str):
-#     # Обновляем статус, если запись существует
-#     try:
-#         task_status = db.session.query(TaskStatus).filter_by(task_id=task_id).one()
-#         task_status.status = status
-#         task_status.message = message
-#         db.session.commit()
-#     except NoResultFound:
-#         # Можно выбрать создать новую запись или ничего не делать
-#         # Например, создадим новую:
-#         create_task_status(task_id, status, message)
+#     if task_id in task_statuses:
+#         task_statuses[task_id]["status"] = status
+#         task_statuses[task_id]["message"] = message
+
+from sqlalchemy.exc import NoResultFound
+
+def create_task_status(task_id: str, status: str, message: str):
+    # Создаем новый объект TaskStatus и добавляем его в базу
+    new_task_status = TaskStatus(task_id=task_id, status=status, message=message)
+    db.session.add(new_task_status)
+    db.session.commit()
+
+def get_task_status_by_id(task_id: str):
+    # Пытаемся получить статус по task_id
+    try:
+        task_status = db.session.query(TaskStatus).filter_by(task_id=task_id).one()
+        return {
+            "task_id": task_status.task_id,
+            "status": task_status.status,
+            "message": task_status.message
+        }
+    except NoResultFound:
+        return None  # Или можно вернуть {} или другое значение по умолчанию
+
+def update_task_status(task_id: str, status: str, message: str):
+    # Обновляем статус, если запись существует
+    try:
+        task_status = db.session.query(TaskStatus).filter_by(task_id=task_id).one()
+        task_status.status = status
+        task_status.message = message
+        db.session.commit()
+    except NoResultFound:
+        # Можно выбрать создать новую запись или ничего не делать
+        # Например, создадим новую:
+        create_task_status(task_id, status, message)
 
 
 # def process_db_add(file_name: str, task_id: str):
@@ -1539,7 +1545,6 @@ def process_db_add(file_name: str, task_id: str):
             db.session.query(Images).delete()
             db.session.query(CatalogItem).delete()
             db.session.query(Category).delete()
-            db.session.query(TaskStatus).delete()
             db.session.commit()
 
             for row in reader:

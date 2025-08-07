@@ -42,4 +42,6 @@ ENV FLASK_ENV=production
 
 EXPOSE 8080
 
+# Используем entrypoint
+#ENTRYPOINT ["/app/entrypoint.sh"]
 CMD ["python", "-m", "flask", "run", "--port=8080"]
