@@ -266,45 +266,82 @@ logging.basicConfig(level=logging.INFO)
 SMTP_SERVER = 'smtp.yandex.ru'
 SMTP_PORT = 587
 EMAIL_ADDRESS = 'legostorage@yandex.ru'  # ваш email
-EMAIL_PASSWORD = 'lego_storage_password' # ваш пароль
+EMAIL_PASSWORD = 'dgdauqansfzzlkyz' # ваш пароль
+
 
 def send_order_email(order, order_details):
     with app.app_context():
+        logging.info(f"Начинаю отправку письма по заказу #{order.id}")
         subject = f"Новый заказ #{order.id}"
         to_email = 'legobricks2025@gmail.com'
 
-        body = (
-            f"Новый заказ №{order.id}\n"
-            f"Дата: {order.created_at}\n"
-            f"Клиент: {order.customer_name}\n"
-            f"Телефон: {order.customer_telephone}\n"
-            f"Почта: {order.customer_email}\n"
-            f"Доставка: {'Да' if order.dostavka else 'Нет'}\n"
-            f"Общая сумма: {order.total_price}\n\n"
-            "Позиции заказа:\n"
-        )
+        # Форматируем дату и время
+        created_at_formatted = order.created_at.strftime("%H:%M %d-%m-%Y")
 
+        table_rows = ""
         for item in order_details:
-            body += (
-                f"- {item['description']} | "
-                f"Количество: {item['quantity_in_order']} | "
-                f"Цена за единицу: {item['unit_price']} | "
-                f"Итого: {item['total_price']}\n"
-            )
+            description = item['description']
+            quantity = item['quantity_in_order']
+            unit_price = item['unit_price']
+            total_price = item['total_price']
+            table_rows += f"""
+                <tr>
+                    <td>{description}</td>
+                    <td style="text-align:center;">{quantity}</td>
+                    <td style="text-align:right;">{unit_price:.2f}</td>
+                    <td style="text-align:right;">{total_price:.2f}</td>
+                </tr>
+            """
 
-        msg = MIMEText(body, 'plain', 'utf-8')
+        html_content = f"""
+        <html>
+        <body>
+            <h2>Новый заказ №{order.id}</h2>
+            <p><strong>Дата:</strong> {created_at_formatted}</p>
+            <p><strong>Клиент:</strong> {order.customer_name}</p>
+            <p><strong>Телефон:</strong> {order.customer_telephone}</p>
+            <p><strong>Почта:</strong> {order.customer_email}</p>
+            <p><strong>Доставка:</strong> {'Да' if order.dostavka else 'Нет'}</p>
+            <p><strong>Общая сумма:</strong> {order.total_price:.2f} руб.</p>
+
+            <h3>Позиции заказа:</h3>
+            <table border="1" cellpadding="5" cellspacing="0" style="border-collapse: collapse; width: 100%;">
+                <thead>
+                    <tr style="background-color:#f2f2f2;">
+                        <th style="text-align:left;">Описание</th>
+                        <th style="text-align:center;">Кол-во</th>
+                        <th style="text-align:right;">Цена за ед.</th>
+                        <th style="text-align:right;">Итог</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {table_rows}
+                </tbody>
+            </table>
+        </body>
+        </html>
+        """
+
+        msg = MIMEMultipart('alternative')
         msg['Subject'] = subject
         msg['From'] = EMAIL_ADDRESS
         msg['To'] = to_email
+        
+        part_html = MIMEText(html_content, 'html', 'utf-8')
+        msg.attach(part_html)
 
         try:
             with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+                logging.info("Подключение к SMTP серверу")
                 server.starttls()
+                logging.info("Запуск TLS")
                 server.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
+                logging.info("Логин выполнен")
                 server.send_message(msg)
-            logging.info("Email успешно отправлен")
+                logging.info("Письмо отправлено")
         except Exception as e:
             logging.error(f"Ошибка при отправке email: {e}")
+
 
 
 
@@ -401,8 +438,9 @@ def submit_cart():
 
         db.session.commit()
 
-        thread = threading.Thread(target=send_order_email, args=(order, order_details_for_email))
-        thread.start()
+        # thread = threading.Thread(target=send_order_email, args=(order, order_details_for_email))
+        # thread.start()
+        send_order_email(order, order_details_for_email)
 
         return jsonify({'message': 'Order created', 'order_id': order.id})
 
@@ -831,9 +869,11 @@ def build_nested_structure(categories):
                 current_level = current_level[part]
     return structure
 
+
 @app.get("/category-structure")
 def get_category_structure():
     categories = Category.query.all()
+    # categories = Category.query.filter(Category.catalog_items.any()).all()
     nested_structure = build_nested_structure(categories)
     
     return jsonify(nested_structure)
@@ -1108,59 +1148,6 @@ def add_category_if_not_exists(session: Session, category_name: str):
             session.rollback()
             return session.query(Category).filter_by(name=category_name).first()
         
-# --- по скачиванию картинок --- 
-      
-# import os
-# import shutil
-# import requests
-# from urllib.parse import urlparse, unquote
-
-# def get_filename_from_url(url):
-#     # Парсим URL и извлекаем имя файла
-#     path = urlparse(url).path
-#     filename = os.path.basename(path)
-#     filename = unquote(filename)  # декодируем URL-кодированные символы
-#     if not filename or '.' not in filename:
-#         # если в URL нет имени файла или оно некорректное, создаем уникальное имя
-#         filename = f"image_{uuid.uuid4()}.jpg"
-#     return filename
-
-# def download_image_with_url_name(image_url, save_dir, default_image_path):
-#     # Получаем имя файла из URL
-#     filename = get_filename_from_url(image_url)
-#     save_path = os.path.join(save_dir, filename)
-
-#     # Проверяем, есть ли уже файл
-#     if os.path.exists(save_path):
-#         print(f"Файл уже существует: {save_path}")
-#         return save_path
-
-#     try:
-#         response = requests.get(image_url, stream=True, timeout=10)
-#         response.raise_for_status()
-#         with open(save_path, 'wb') as out_file:
-#             for chunk in response.iter_content(chunk_size=8192):
-#                 out_file.write(chunk)
-#         print(f"Изображение успешно скачано: {save_path}")
-#         return save_path
-#     except Exception as e:
-#         print(f"Ошибка при скачивании: {e}")
-#         # копируем дефолтное изображение вместо скачанного
-#         default_filename = os.path.basename(default_image_path)
-#         default_dest_path = os.path.join(save_dir, default_filename)
-#         shutil.copy(default_image_path, default_dest_path)
-#         print(f"Используется изображение по умолчанию: {default_dest_path}")
-#         return default_dest_path
-
-# # пример использования
-# import uuid
-
-# image_url = "https://example.com/images/my%20photo.jpg"
-# save_directory = "./app_lego/static"
-# default_image_path = "./app_lego/static/default.jpg"
-
-# downloaded_image_path = download_image_with_url_name(image_url, save_directory, default_image_path)
-# print(f"Файл сохранен по пути: {downloaded_image_path}")
 
 
 def process_db_add(file_name: str, task_id: str):
@@ -1189,12 +1176,9 @@ def process_db_add(file_name: str, task_id: str):
                 color_number = color_dict.get(color_name, '0')
 
                 if "Instruction" in category_name:
-                    image_url = f"https://img.bricklink.com/ItemImage/IN/{color_number}/{item_no}.png"
+                    image_url = f"http://34.160.149.248/ItemImage/IN/{color_number}/{item_no}.png"
                 else:
-                    image_url = f"https://img.bricklink.com/ItemImage/PN/{color_number}/{item_no}.png"
-
-                # Скачивание изображения
-                # download_image_with_url_name(image_url, save_directory, default_image_path)
+                    image_url = f"http://34.160.149.248/ItemImage/PN/{color_number}/{item_no}.png"
 
 
                 new_image = Images(ids=item_no, color=color_name, image_url=image_url)
