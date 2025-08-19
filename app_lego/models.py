@@ -12,13 +12,11 @@ class TaskStatus(db.Model):
     __tablename__ = 'task_status'
     id = db.Column(db.Integer, primary_key=True)
     task_id = db.Column(db.String, unique=True)
-    status = db.Column(db.String)  # например: 'pending', 'processing', 'completed', 'error'
-    message = db.Column(db.String)  # optional: описание или сообщение об ошибке
+    status = db.Column(db.String)  
+    message = db.Column(db.String)  
 
 
 
-
-# Таблица связи "многие ко многим" с дополнительными полями
 class OrderItem(db.Model):
     __tablename__ = 'order_items'
     order_id = db.Column(db.Integer, db.ForeignKey('orders.id'), primary_key=True)
@@ -61,29 +59,19 @@ def load_user(user_id):
     return AdminUser.query.get(int(user_id))
 
 
-# Модель "Админ пользователи"
 class AdminUser(db.Model):
     __tablename__ = 'admin_user'
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(50), unique=True)
     password_hash = db.Column(db.String(128))
 
-# Script to add admin user in docker terminal
-
-# from app_lego import db, app, AdminUser
-# from flask_bcrypt import generate_password_hash
-# with app.app_context():
-#     hashed_password = generate_password_hash('Test1234').decode('utf-8')
-#     user = AdminUser(username='admin', password_hash=hashed_password)
-#     db.session.add(user)
-#     db.session.commit()
 
 class Category(db.Model):
     __tablename__ = 'category'
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), unique=True, nullable=False)
 
-    # Связь с товарами
+
     catalog_items = db.relationship('CatalogItem', backref='category', lazy=True)
 
 
