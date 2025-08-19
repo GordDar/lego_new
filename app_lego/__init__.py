@@ -1107,6 +1107,60 @@ def add_category_if_not_exists(session: Session, category_name: str):
         except IntegrityError:
             session.rollback()
             return session.query(Category).filter_by(name=category_name).first()
+        
+# --- по скачиванию картинок --- 
+      
+# import os
+# import shutil
+# import requests
+# from urllib.parse import urlparse, unquote
+
+# def get_filename_from_url(url):
+#     # Парсим URL и извлекаем имя файла
+#     path = urlparse(url).path
+#     filename = os.path.basename(path)
+#     filename = unquote(filename)  # декодируем URL-кодированные символы
+#     if not filename or '.' not in filename:
+#         # если в URL нет имени файла или оно некорректное, создаем уникальное имя
+#         filename = f"image_{uuid.uuid4()}.jpg"
+#     return filename
+
+# def download_image_with_url_name(image_url, save_dir, default_image_path):
+#     # Получаем имя файла из URL
+#     filename = get_filename_from_url(image_url)
+#     save_path = os.path.join(save_dir, filename)
+
+#     # Проверяем, есть ли уже файл
+#     if os.path.exists(save_path):
+#         print(f"Файл уже существует: {save_path}")
+#         return save_path
+
+#     try:
+#         response = requests.get(image_url, stream=True, timeout=10)
+#         response.raise_for_status()
+#         with open(save_path, 'wb') as out_file:
+#             for chunk in response.iter_content(chunk_size=8192):
+#                 out_file.write(chunk)
+#         print(f"Изображение успешно скачано: {save_path}")
+#         return save_path
+#     except Exception as e:
+#         print(f"Ошибка при скачивании: {e}")
+#         # копируем дефолтное изображение вместо скачанного
+#         default_filename = os.path.basename(default_image_path)
+#         default_dest_path = os.path.join(save_dir, default_filename)
+#         shutil.copy(default_image_path, default_dest_path)
+#         print(f"Используется изображение по умолчанию: {default_dest_path}")
+#         return default_dest_path
+
+# # пример использования
+# import uuid
+
+# image_url = "https://example.com/images/my%20photo.jpg"
+# save_directory = "./app_lego/static"
+# default_image_path = "./app_lego/static/default.jpg"
+
+# downloaded_image_path = download_image_with_url_name(image_url, save_directory, default_image_path)
+# print(f"Файл сохранен по пути: {downloaded_image_path}")
 
 
 def process_db_add(file_name: str, task_id: str):
@@ -1138,6 +1192,9 @@ def process_db_add(file_name: str, task_id: str):
                     image_url = f"https://img.bricklink.com/ItemImage/IN/{color_number}/{item_no}.png"
                 else:
                     image_url = f"https://img.bricklink.com/ItemImage/PN/{color_number}/{item_no}.png"
+
+                # Скачивание изображения
+                # download_image_with_url_name(image_url, save_directory, default_image_path)
 
 
                 new_image = Images(ids=item_no, color=color_name, image_url=image_url)
