@@ -254,242 +254,18 @@ def get_catalog():
 
 
 
-# --- 2. Отправка корзины (POST /cart) ---
-import smtplib
-import logging
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
-
-
-logging.basicConfig(level=logging.INFO)
-
-SMTP_SERVER = 'smtp.yandex.ru'
-SMTP_PORT = 587
-EMAIL_ADDRESS = 'legostorage@yandex.ru'  # ваш email
-EMAIL_PASSWORD = 'dgdauqansfzzlkyz' # ваш пароль
-
-
-def send_order_email(order, order_details):
-    with app.app_context():
-        logging.info(f"Начинаю отправку письма по заказу #{order.id}")
-        subject = f"Новый заказ #{order.id}"
-        to_email = 'legobricks2025@gmail.com'
-
-        # Форматируем дату и время
-        created_at_formatted = order.created_at.strftime("%H:%M %d-%m-%Y")
-
-        table_rows = ""
-        for item in order_details:
-            description = item['description']
-            quantity = item['quantity_in_order']
-            unit_price = item['unit_price']
-            total_price = item['total_price']
-            table_rows += f"""
-                <tr>
-                    <td>{description}</td>
-                    <td style="text-align:center;">{quantity}</td>
-                    <td style="text-align:right;">{unit_price:.2f}</td>
-                    <td style="text-align:right;">{total_price:.2f}</td>
-                </tr>
-            """
-
-        html_content = f"""
-        <html>
-        <body>
-            <h2>Новый заказ №{order.id}</h2>
-            <p><strong>Дата:</strong> {created_at_formatted}</p>
-            <p><strong>Клиент:</strong> {order.customer_name}</p>
-            <p><strong>Телефон:</strong> {order.customer_telephone}</p>
-            <p><strong>Почта:</strong> {order.customer_email}</p>
-            <p><strong>Доставка:</strong> {'Да' if order.dostavka else 'Нет'}</p>
-            <p><strong>Общая сумма:</strong> {order.total_price:.2f} руб.</p>
-
-            <h3>Позиции заказа:</h3>
-            <table border="1" cellpadding="5" cellspacing="0" style="border-collapse: collapse; width: 100%;">
-                <thead>
-                    <tr style="background-color:#f2f2f2;">
-                        <th style="text-align:left;">Описание</th>
-                        <th style="text-align:center;">Кол-во</th>
-                        <th style="text-align:right;">Цена за ед.</th>
-                        <th style="text-align:right;">Итог</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {table_rows}
-                </tbody>
-            </table>
-        </body>
-        </html>
-        """
-
-        msg = MIMEMultipart('alternative')
-        msg['Subject'] = subject
-        msg['From'] = EMAIL_ADDRESS
-        msg['To'] = to_email
-        
-        part_html = MIMEText(html_content, 'html', 'utf-8')
-        msg.attach(part_html)
-
-        try:
-            with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
-                logging.info("Подключение к SMTP серверу")
-                server.starttls()
-                logging.info("Запуск TLS")
-                server.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
-                logging.info("Логин выполнен")
-                server.send_message(msg)
-                logging.info("Письмо отправлено")
-        except Exception as e:
-            logging.error(f"Ошибка при отправке email: {e}")
-
-
-
-
-@app.route('/cart', methods=['POST'])
-def submit_cart():
-    data = request.get_json()
-    
-    items_data = data.get('items')
-    customer_name = data.get('customer_name')
-    customer_telephone = data.get('customer_telephone')
-    customer_email = data.get('customer_email')
-    dostavka = data.get('dostavka', False)
-
-    # Проверка обязательных полей
-    if not items_data or not customer_name or not customer_telephone:
-        return jsonify({'error': 'Missing required fields'}), 400
-
-    order_details_for_email = []
-    total_price = 0
-
-
-    catalog_items_cache = {}
-    
-    for item in items_data:
-        item_id = item['id']
-        quantity_requested = item.get('quantity', 1)
-        
-        if item_id not in catalog_items_cache:
-            catalog_item = CatalogItem.query.get(item_id)
-            if not catalog_item:
-                print("a")
-                return jsonify({'error': f'Item with item id {item_id} not found'}), 404
-            catalog_items_cache[item_id] = catalog_item
-        else:
-            catalog_item = catalog_items_cache[item_id]
-        
-        if catalog_item.quantity < quantity_requested:
-            print("b")
-            return jsonify({
-                'error': f'No Недостаточно товара "{catalog_item.description}". '
-                         f'Доступно: {catalog_item.quantity}, запрошено: {quantity_requested}'
-            }), 400
-        
-        price_per_unit = getattr(catalog_item, 'price', 0)
-        total_price += price_per_unit * quantity_requested
-        
-
-        order_details_for_email.append({
-            'description': catalog_item.description,
-            'quantity_in_order': quantity_requested,
-            'unit_price': price_per_unit,
-            'total_price': price_per_unit * quantity_requested
-        })
-
-    settings = Settings.query.filter_by(settings_name='min').first()
-    min_order_value = settings.settings_value if settings else None
-    
-    if min_order_value is not None and total_price < min_order_value:
-        print("c")
-        return jsonify({
-            'error': f'Min {min_order_value}. '
-                     f'Your {total_price}'
-        }), 400
- 
-
-    from datetime import datetime
-
-
-    try:
-        order = Order(
-            customer_name=customer_name,
-            customer_telephone=customer_telephone,
-            customer_email=customer_email,
-            dostavka=dostavka,
-            total_price=total_price,
-            created_at=datetime.utcnow()
-        )
-        db.session.add(order)
-        db.session.flush()
-
-        for item in items_data:
-            item_id = item['id']
-            quantity_requested = item.get('quantity', 1)
-            catalog_item = catalog_items_cache[item_id]
-
-            order_item = OrderItem(
-                order=order,
-                catalog_item=catalog_item,
-                quantity=quantity_requested
-            )
-            db.session.add(order_item)
-
-            catalog_item.quantity -= quantity_requested
-
-        db.session.commit()
-
-        # thread = threading.Thread(target=send_order_email, args=(order, order_details_for_email))
-        # thread.start()
-        send_order_email(order, order_details_for_email)
-
-        return jsonify({'message': 'Order created', 'order_id': order.id})
-
-    except Exception as e:
-        logging.exception("Ошибка при создании заказа")
-        return jsonify({'error': 'Ошибка при обработке заказа'}), 500
-
-
-
-# --- 2.2   Обработка скачивания pdf ---
+# --- 2.1   Обработка скачивания pdf ---
 import io
 from flask import request, jsonify, send_file
 from weasyprint import HTML, CSS
 
-@app.route('/download_pdf', methods=['POST'])
-def download_pdf():
-    data = request.get_json()
-    items_data = data.get('items')
 
-    catalog_items_cache = {}
-    order_details_for_email = []
-    total_price = 0
+def generate_order_pdf(order, order_details):
+    """
+    Формирует PDF по данным заказа и возвращает его в виде байтов.
+    """
+    total_price_value = sum(item['total_price'] for item in order_details)
 
-    for item in items_data:
-        item_id = item['id']
-        quantity_requested = item.get('quantity', 1)
-
-        if item_id not in catalog_items_cache:
-            catalog_item = CatalogItem.query.get(item_id)
-            if not catalog_item:
-                return jsonify({'error': f'Item with id {item_id} не найден'}), 404
-            catalog_items_cache[item_id] = catalog_item
-        else:
-            catalog_item = catalog_items_cache[item_id]
-
-        price_per_unit = getattr(catalog_item, 'price', 0)
-        total_price += price_per_unit * quantity_requested
-
-        order_details_for_email.append({
-            'description': catalog_item.description,
-            'image': catalog_item.url,
-            'quantity_in_order': quantity_requested,
-            'unit_price': price_per_unit,
-            'total_price': price_per_unit * quantity_requested
-        })
-
-    total_price_value = sum(item['total_price'] for item in order_details_for_email)
-
-    # Создаем HTML-шаблон
     html_content = f"""
     <html>
     <head>
@@ -541,10 +317,10 @@ def download_pdf():
             <tbody>
     """
 
-    for item in order_details_for_email:
+    for item in order_details:
         html_content += f"""
                 <tr>
-                    <td><img src="{item['image']}" alt="image" /></td>
+                    <td><img src="{item['url']}" alt="image" style="max-width:100px; height:auto;"></td>
                     <td>{item['description']}</td>
                     <td>{item['quantity_in_order']}</td>
                     <td>{item['unit_price']:.2f}</td>
@@ -560,8 +336,43 @@ def download_pdf():
     </html>
     """
 
-
     pdf_bytes = HTML(string=html_content).write_pdf()
+    return pdf_bytes
+
+
+
+@app.route('/download_pdf', methods=['POST'])
+def download_pdf():
+    data = request.get_json()
+    items_data = data.get('items', [])
+
+    catalog_items_cache = {}
+    order_details_for_pdf = []
+
+    for item in items_data:
+        item_id = item['id']
+        quantity_requested = item.get('quantity', 1)
+
+        if item_id not in catalog_items_cache:
+            catalog_item = CatalogItem.query.get(item_id)
+            if not catalog_item:
+                return jsonify({'error': f'Item with id {item_id} не найден'}), 404
+            catalog_items_cache[item_id] = catalog_item
+        else:
+            catalog_item = catalog_items_cache[item_id]
+
+        price_per_unit = getattr(catalog_item, 'price', 0)
+        total_price = price_per_unit * quantity_requested
+
+        order_details_for_pdf.append({
+            'description': getattr(catalog_item, 'description', ''),
+            'url': getattr(catalog_item, 'url', ''),
+            'quantity_in_order': quantity_requested,
+            'unit_price': price_per_unit,
+            'total_price': total_price
+        })
+
+    pdf_bytes = generate_order_pdf(order=None, order_details=order_details_for_pdf)
 
     buffer = io.BytesIO(pdf_bytes)
     
@@ -571,6 +382,362 @@ def download_pdf():
         download_name="order_details.pdf",
         mimetype='application/pdf'
     )
+
+
+# --- 2.2 Отправка почты ---
+import smtplib
+import logging
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from email.mime.application import MIMEApplication
+
+
+logging.basicConfig(level=logging.INFO)
+
+SMTP_SERVER = 'smtp.yandex.ru'
+SMTP_PORT = 587
+EMAIL_ADDRESS = 'legostorage@yandex.ru'  # ваш email
+EMAIL_PASSWORD = 'dgdauqansfzzlkyz' # ваш пароль
+
+
+def send_order_email(order, order_details, pdf_bytes):
+    """
+    Отправляет письмо с информацией о заказе и вложенным PDF.
+    
+    :param order: объект заказа с атрибутами (id, created_at, customer_name и т.д.)
+    :param order_details: список dict с деталями заказа.
+    :param pdf_bytes: байты PDF файла.
+    """
+    from flask import current_app as app
+
+    with app.app_context():
+        logging.info(f"Начинаю отправку письма по заказу #{order.id}")
+        
+        subject = f"Новый заказ #{order.id}"
+        to_email = 'oldi2008@yandex.ru'  # Замените на актуальный адрес
+        
+        created_at_formatted = order.created_at.strftime("%H:%M %d-%m-%Y") if hasattr(order, 'created_at') and order.created_at else ""
+
+        table_rows = ""
+        for item in order_details:
+            description = item.get('description', '')
+            url_img = item.get('url', '')
+            quantity_in_order = item.get('quantity_in_order', '')
+            unit_price = item.get('unit_price', 0)
+            total_price_item = item.get('total_price', 0)
+            id_ = item.get('id', '')
+            color_ = item.get('color', '')
+            remarks_ = item.get('remarks', '')
+
+            table_rows += f"""
+                <tr>
+                    <td>{description}</td>
+                    <td>{id_}</td>
+                    <td>{color_}</td>
+                    <td>{remarks_}</td>
+                    <td style="text-align:center;">{quantity_in_order}</td>
+                    <td style="text-align:right;">{unit_price:.2f}</td>
+                    <td style="text-align:right;">{total_price_item:.2f}</td>
+                </tr>
+            """
+
+        html_content_email=f"""
+        <html>
+        <body>
+            <h2>Новый заказ №{order.id}</h2>
+            <h4><a href="http://34.110.202.124/orders/{order.id}">Ссылка на заказ №{order.id}</a></h4>
+            <p><strong>Дата:</strong> {created_at_formatted}</p>
+            <p><strong>Клиент:</strong> {getattr(order,'customer_name','')}</p>
+            <p><strong>Телефон:</strong> {getattr(order,'customer_telephone','')}</p>
+            <p><strong>Почта:</strong> {getattr(order,'customer_email','')}</p>
+            <p><strong>Доставка:</strong> {'Да' if getattr(order,'dostavka',False) else 'Нет'}</p>
+            <p><strong>Общая сумма:</strong> {getattr(order,'total_price',0):.2f} долл.</p>
+
+            <h3>Позиции заказа:</h3>
+            <table border="1" cellpadding="5" cellspacing="0" style="border-collapse: collapse; width: 100%;">
+                <thead style="background-color:#f2f2f2;">
+                    <tr style="text-align:left;">
+                        <th style="text-align:left;">Описание</th>
+                        <th style="text-align:center;">Id</th>
+                        <th style="text-align:center;">Цвет</th>
+                        <th style="text-align:center;">Заметки</th>
+                        <th style="text-align:center;">Кол-во</th>
+                        <th style="text-align:right;">Цена за ед.</th>
+                        <th style="text-align:right;">Итог</th></tr></thead><tbody>{table_rows}
+                </tbody></table></body></html>"""
+
+        msg= MIMEMultipart('alternative')
+        msg['Subject']=subject
+        msg['From']=EMAIL_ADDRESS
+        msg['To']=to_email
+
+        part_html= MIMEText(html_content_email,'html','utf-8')
+        msg.attach(part_html)
+
+        if pdf_bytes:
+            logging.info(f"pdf есть")
+            attachment= MIMEApplication(pdf_bytes,'pdf')
+            attachment.add_header('Content-Disposition','attachment', filename='order_details.pdf')
+            msg.attach(attachment)
+
+        try:
+            with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+               logging.info("Подключение к SMTP серверу")
+               server.starttls()
+               logging.info("Запуск TLS")
+               server.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
+               logging.info("Логин выполнен")
+               server.send_message(msg)
+               logging.info("Письмо отправлено")
+        except Exception as e:
+            logging.error(f"Ошибка при отправке email: {e}")
+
+
+
+# --- 2. Отправка корзины (POST /cart) ---
+@app.route('/cart', methods=['POST'])
+def submit_cart():
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'Invalid JSON'}), 400
+
+    items_data = data.get('items')
+    customer_name = data.get('customer_name')
+    customer_telephone = data.get('customer_telephone')
+    customer_email = data.get('customer_email')
+    dostavka = data.get('dostavka', False)
+
+    # Проверка обязательных полей
+    if not items_data or not customer_name or not customer_telephone:
+        return jsonify({'error': 'Missing required fields'}), 400
+
+    # Проверка типа items_data
+    if not isinstance(items_data, list):
+        return jsonify({'error': 'Items should be a list'}), 400
+
+    order_details_for_email = []
+    total_price = 0
+    catalog_items_cache = {}
+
+    # Предварительно собираем все уникальные id товаров
+    item_ids = {item['id'] for item in items_data if 'id' in item}
+    
+    # Получаем все товары за один запрос
+    catalog_items = CatalogItem.query.filter(CatalogItem.id.in_(item_ids)).all()
+    for catalog_item in catalog_items:
+        catalog_items_cache[catalog_item.id] = catalog_item
+
+    # Обработка каждого элемента заказа
+    for item in items_data:
+        item_id = item.get('id')
+        if not item_id:
+            return jsonify({'error': 'Item id is missing'}), 400
+
+        quantity_requested = item.get('quantity', 1)
+        if not isinstance(quantity_requested, int) or quantity_requested <= 0:
+            return jsonify({'error': 'Invalid quantity'}), 400
+
+        catalog_item = catalog_items_cache.get(item_id)
+        if not catalog_item:
+            return jsonify({'error': f'Item with id {item_id} not found'}), 404
+
+        if catalog_item.quantity < quantity_requested:
+            return jsonify({
+                'error': f'Not allowed amount "{catalog_item.description}". '
+                         f'Max count: {catalog_item.quantity}, Requested: {quantity_requested}'
+            }), 400
+
+        price_per_unit = getattr(catalog_item, 'price', 0)
+        total_price += price_per_unit * quantity_requested
+
+        order_details_for_email.append({
+            'description': catalog_item.description,
+            'url': catalog_item.url,
+            'remarks': catalog_item.remarks,
+            'color': catalog_item.color,
+            'id': catalog_item.lot_id,
+            'quantity_in_order': quantity_requested,
+            'unit_price': price_per_unit,
+            'total_price': price_per_unit * quantity_requested
+        })
+
+    # Проверка минимальной суммы заказа
+    settings = Settings.query.filter_by(settings_name='min').first()
+    min_order_value = float(settings.settings_value) if settings else None
+    
+    if min_order_value is not None and total_price < min_order_value:
+        return jsonify({
+            'error': f'Minimum order value {min_order_value}. Your cart value {total_price}'
+        }), 400
+
+    from datetime import datetime
+
+    try:
+        # Начинаем транзакцию
+        order = Order(
+            customer_name=customer_name,
+            customer_telephone=customer_telephone,
+            customer_email=customer_email,
+            dostavka=dostavka,
+            total_price=total_price,
+            created_at=datetime.utcnow()
+        )
+        db.session.add(order)
+        db.session.flush()  # чтобы получить order.id
+
+        for item in items_data:
+            item_id = item['id']
+            quantity_requested = item.get('quantity', 1)
+            catalog_item = catalog_items_cache[item_id]
+
+            # Создаем заказанный товар
+            order_item = OrderItem(
+                order=order,
+                catalog_item=catalog_item,
+                quantity=quantity_requested
+            )
+            db.session.add(order_item)
+
+            # Уменьшаем количество товара после успешного добавления заказа
+            logging.info(f"Обновление товара {catalog_item.id}: {catalog_item.quantity} -> {catalog_item.quantity - quantity_requested}")
+            catalog_item.quantity -= quantity_requested
+
+        
+        # Генерация PDF и отправка письма могут быть выполнены асинхронно
+        pdf_bytes = generate_order_pdf(order=order, order_details=order_details_for_email)
+
+        # Отправка письма (можно вынести в очередь задач)
+        send_order_email(order, order_details_for_email, pdf_bytes=pdf_bytes)
+        db.session.commit()  # фиксируем все изменения только если всё прошло успешно
+        return jsonify({'message': 'Order created', 'order_id': order.id})
+
+    except Exception as e:
+        logging.exception("Ошибка при создании заказа")
+        db.session.rollback()  # отменяем все изменения, сделанные в транзакции
+        return jsonify({'error': 'Ошибка при обработке заказа'}), 500
+
+
+
+
+
+
+
+# @app.route('/download_pdf', methods=['POST'])
+# def download_pdf():
+#     data = request.get_json()
+#     items_data = data.get('items')
+
+#     catalog_items_cache = {}
+#     order_details_for_email = []
+#     total_price = 0
+
+#     for item in items_data:
+#         item_id = item['id']
+#         quantity_requested = item.get('quantity', 1)
+
+#         if item_id not in catalog_items_cache:
+#             catalog_item = CatalogItem.query.get(item_id)
+#             if not catalog_item:
+#                 return jsonify({'error': f'Item with id {item_id} не найден'}), 404
+#             catalog_items_cache[item_id] = catalog_item
+#         else:
+#             catalog_item = catalog_items_cache[item_id]
+
+#         price_per_unit = getattr(catalog_item, 'price', 0)
+#         total_price += price_per_unit * quantity_requested
+
+#         order_details_for_email.append({
+#             'description': catalog_item.description,
+#             'image': catalog_item.url,
+#             'quantity_in_order': quantity_requested,
+#             'unit_price': price_per_unit,
+#             'total_price': price_per_unit * quantity_requested
+#         })
+
+#     total_price_value = sum(item['total_price'] for item in order_details_for_email)
+
+#     # Создаем HTML-шаблон
+#     html_content = f"""
+#     <html>
+#     <head>
+#         <meta charset="UTF-8">
+#         <style>
+#             body {{
+#                 font-family: DejaVu Sans, Arial, sans-serif;
+#                 margin: 40px;
+#             }}
+#             h1 {{
+#                 text-align: center;
+#                 font-size: 24px;
+#                 margin-bottom: 20px;
+#             }}
+#             table {{
+#                 width: 100%;
+#                 border-collapse: collapse;
+#                 margin-bottom: 20px;
+#             }}
+#             th, td {{
+#                 border: 1px solid #000;
+#                 padding: 8px;
+#                 text-align: left;
+#                 font-size: 14px;
+#             }}
+#             th {{
+#                 background-color: #f0f0f0;
+#             }}
+#             .total {{
+#                 text-align: right;
+#                 font-weight: bold;
+#                 font-size: 16px;
+#                 margin-top: 10px;
+#             }}
+#         </style>
+#     </head>
+#     <body>
+#         <h1>Детали заказа</h1>
+#         <table>
+#             <thead>
+#                 <tr>
+#                     <th>Изображение</th>
+#                     <th>Описание</th>
+#                     <th>Кол-во</th>
+#                     <th>Цена</th>
+#                     <th>Всего</th>
+#                 </tr>
+#             </thead>
+#             <tbody>
+#     """
+
+#     for item in order_details_for_email:
+#         html_content += f"""
+#                 <tr>
+#                     <td><img src="{item['image']}" alt="image" /></td>
+#                     <td>{item['description']}</td>
+#                     <td>{item['quantity_in_order']}</td>
+#                     <td>{item['unit_price']:.2f}</td>
+#                     <td>{item['total_price']:.2f}</td>
+#                 </tr>
+#         """
+
+#     html_content += f"""
+#             </tbody>
+#         </table>
+#         <div class="total">Общая сумма: {total_price_value:.2f}</div>
+#     </body>
+#     </html>
+#     """
+
+
+#     pdf_bytes = HTML(string=html_content).write_pdf()
+
+#     buffer = io.BytesIO(pdf_bytes)
+    
+#     return send_file(
+#         buffer,
+#         as_attachment=True,
+#         download_name="order_details.pdf",
+#         mimetype='application/pdf'
+#     )
 
 
 
