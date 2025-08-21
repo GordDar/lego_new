@@ -414,7 +414,7 @@ def send_order_email(order, order_details, pdf_bytes):
         logging.info(f"Начинаю отправку письма по заказу #{order.id}")
         
         subject = f"Новый заказ #{order.id}"
-        to_email = 'oldi2008@yandex.ru'  # Замените на актуальный адрес
+        to_email = 'legobricks2025@gmail.com'  # Замените на актуальный адрес
         
         created_at_formatted = order.created_at.strftime("%H:%M %d-%m-%Y") if hasattr(order, 'created_at') and order.created_at else ""
 
