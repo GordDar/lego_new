@@ -294,6 +294,9 @@ def generate_order_pdf(order, order_details):
             th {{
                 background-color: #f0f0f0;
             }}
+            img {{
+                width: 90px;
+            }}
             .total {{
                 text-align: right;
                 font-weight: bold;

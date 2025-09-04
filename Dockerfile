@@ -7,7 +7,6 @@ RUN apt-get update && apt-get install -y \
     unzip \
     libglib2.0-0 \
     libnss3 \
-    libgconf-2-4 \
     libfontconfig1 \
     libxss1 \
     libx11-xcb1 \
