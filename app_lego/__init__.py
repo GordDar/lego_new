@@ -15,6 +15,7 @@ from datetime import datetime
 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
+import threading
 
 from bs4 import BeautifulSoup
 from google.cloud import storage
@@ -205,31 +206,6 @@ def get_catalog():
     query = query.order_by(CatalogItem.id)
     pagination = query.paginate(page=page, per_page=per_page, error_out=False)
     
-    # import requests
-    #
-    # DEFAULT_IMAGE_PATH = "/static/default.jpg"
-    # items = []
-    # for item in pagination.items:
-    #     image_url = item.url
-    #     try:
-    #         response = requests.head(image_url, timeout=5)
-    #         if response.status_code != 200:
-    #             image_url = DEFAULT_IMAGE_PATH
-    #     except requests.RequestException:
-    #         image_url = DEFAULT_IMAGE_PATH
-    #
-    #     items.append({
-    #         'id': item.id,
-    #         'item_no': item.item_no,
-    #         'url': image_url,
-    #         'color': item.color,
-    #         'description': item.description,
-    #         'price': item.price,
-    #         'quantity': item.quantity,
-    #         'category_name': item.category.name if item.category else None,
-    #         'remarks': item.remarks
-    #     })
-    
     items = [{
             'id': item.id,
             'item_no': item.item_no,
@@ -248,6 +224,89 @@ def get_catalog():
         'pages': pagination.pages,
         'current_page': pagination.page
     })
+    
+    
+# import requests    
+# DEFAULT_IMAGE_PATH = "https://storage.googleapis.com/lego-bricks-app-frontend/default.jpg"
+
+# @app.route('/catalog', methods=['GET'])
+# def get_catalog():
+#     search = request.args.get('search', '', type=str)
+#     search_category = request.args.get('category', '', type=str)
+#     page = request.args.get('page', 1, type=int)
+#     per_page = request.args.get('per_page', 30, type=int)
+    
+#     query = CatalogItem.query.join(Category, CatalogItem.category_id == Category.id)
+
+#     if search_category:
+#         if search_category == 'Parts':
+#             category_obj = Category.query.filter(Category.name.ilike(f"{search_category}%")).first()
+#         else:
+#             category_obj = Category.query.filter(Category.name == search_category).first()
+#         if category_obj:
+#             category_id = category_obj.id
+#             query = query.filter(CatalogItem.category_id == category_id)
+#         else:
+#             return jsonify({
+#                 'items': [],
+#                 'total': 0,
+#                 'pages': 0,
+#                 'current_page': page
+#             })
+        
+#     query = query.filter(CatalogItem.quantity > 0)
+
+#     if search:
+#         search_term = f"%{search}%"
+#         more_id_record = db.session.query(MoreId).filter(MoreId.old_id.ilike(search_term)).first()
+
+#         if more_id_record:
+#             ids_str = more_id_record.ids.strip()
+#             ids_list = [id_part.strip() for id_part in ids_str.split(',')]
+#             query = query.filter(CatalogItem.item_no.in_(ids_list))
+#         else:
+#             query = query.filter(
+#                 or_(
+#                     CatalogItem.color.ilike(search_term),
+#                     CatalogItem.description.ilike(search_term),
+#                     CatalogItem.item_no.ilike(search_term)
+#                 )
+#             )
+
+#     query = query.order_by(CatalogItem.id)
+#     pagination = query.paginate(page=page, per_page=per_page, error_out=False)
+    
+#     items = []
+#     for item in pagination.items:
+#         image_url = item.url
+#         if image_url:
+#             try:
+#                 response = requests.head(image_url, timeout=5)
+#                 if response.status_code != 200:
+#                     image_url = DEFAULT_IMAGE_PATH
+#             except requests.RequestException:
+#                 image_url = DEFAULT_IMAGE_PATH
+#         else:
+#             image_url = DEFAULT_IMAGE_PATH
+
+#         items.append({
+#             'id': item.id,
+#             'item_no': item.item_no,
+#             'url': image_url,
+#             'color': item.color,
+#             'description': item.description,
+#             'price': item.price,
+#             'quantity': item.quantity,
+#             'category_name': item.category.name if item.category else None,
+#             'remarks': item.remarks
+#         })
+
+#     return jsonify({
+#         'items': items,
+#         'total': pagination.total,
+#         'pages': pagination.pages,
+#         'current_page': pagination.page
+#     })
 
 
 
@@ -414,7 +473,8 @@ def send_order_email(order, order_details, pdf_bytes):
         logging.info(f"Начинаю отправку письма по заказу #{order.id}")
         
         subject = f"Новый заказ #{order.id}"
-        to_email = 'legobricks2025@gmail.com'  # Замените на актуальный адрес
+        to_email = 'legobricks2025@gmail.com'
+        # to_email = 'oldi2008@yandex.ru' # Замените на актуальный адрес
         
         created_at_formatted = order.created_at.strftime("%H:%M %d-%m-%Y") if hasattr(order, 'created_at') and order.created_at else ""
 
@@ -571,9 +631,8 @@ def submit_cart():
         }), 400
 
     from datetime import datetime
-
+    
     try:
-        # Начинаем транзакцию
         order = Order(
             customer_name=customer_name,
             customer_telephone=customer_telephone,
@@ -590,7 +649,6 @@ def submit_cart():
             quantity_requested = item.get('quantity', 1)
             catalog_item = catalog_items_cache[item_id]
 
-            # Создаем заказанный товар
             order_item = OrderItem(
                 order=order,
                 catalog_item=catalog_item,
@@ -598,23 +656,75 @@ def submit_cart():
             )
             db.session.add(order_item)
 
-            # Уменьшаем количество товара после успешного добавления заказа
             logging.info(f"Обновление товара {catalog_item.id}: {catalog_item.quantity} -> {catalog_item.quantity - quantity_requested}")
             catalog_item.quantity -= quantity_requested
 
-        
-        # Генерация PDF и отправка письма могут быть выполнены асинхронно
+        db.session.commit()  # фиксируем изменения до отправки письма
+
+        # Генерация PDF (синхронно, чтобы получить pdf_bytes)
         pdf_bytes = generate_order_pdf(order=order, order_details=order_details_for_email)
 
-        # Отправка письма (можно вынести в очередь задач)
-        send_order_email(order, order_details_for_email, pdf_bytes=pdf_bytes)
-        db.session.commit()  # фиксируем все изменения только если всё прошло успешно
+        # Функция-обертка для отправки письма в отдельном потоке
+        def send_email_async(order, order_details, pdf):
+            with app.app_context():
+                try:
+                    send_order_email(order, order_details, pdf_bytes=pdf)
+                except Exception:
+                    logging.exception("Ошибка при отправке письма")
+
+        # Запускаем отправку письма в отдельном потоке
+        threading.Thread(target=send_email_async, args=(order, order_details_for_email, pdf_bytes)).start()
+
         return jsonify({'message': 'Order created', 'order_id': order.id})
 
     except Exception as e:
         logging.exception("Ошибка при создании заказа")
-        db.session.rollback()  # отменяем все изменения, сделанные в транзакции
+        db.session.rollback()
         return jsonify({'error': 'Ошибка при обработке заказа'}), 500
+
+    # try:
+    #     # Начинаем транзакцию
+    #     order = Order(
+    #         customer_name=customer_name,
+    #         customer_telephone=customer_telephone,
+    #         customer_email=customer_email,
+    #         dostavka=dostavka,
+    #         total_price=total_price,
+    #         created_at=datetime.utcnow()
+    #     )
+    #     db.session.add(order)
+    #     db.session.flush()  # чтобы получить order.id
+
+    #     for item in items_data:
+    #         item_id = item['id']
+    #         quantity_requested = item.get('quantity', 1)
+    #         catalog_item = catalog_items_cache[item_id]
+
+    #         # Создаем заказанный товар
+    #         order_item = OrderItem(
+    #             order=order,
+    #             catalog_item=catalog_item,
+    #             quantity=quantity_requested
+    #         )
+    #         db.session.add(order_item)
+
+    #         # Уменьшаем количество товара после успешного добавления заказа
+    #         logging.info(f"Обновление товара {catalog_item.id}: {catalog_item.quantity} -> {catalog_item.quantity - quantity_requested}")
+    #         catalog_item.quantity -= quantity_requested
+
+        
+    #     # Генерация PDF и отправка письма могут быть выполнены асинхронно
+    #     pdf_bytes = generate_order_pdf(order=order, order_details=order_details_for_email)
+
+    #     # Отправка письма (можно вынести в очередь задач)
+    #     send_order_email(order, order_details_for_email, pdf_bytes=pdf_bytes)
+    #     db.session.commit()  # фиксируем все изменения только если всё прошло успешно
+    #     return jsonify({'message': 'Order created', 'order_id': order.id})
+
+    # except Exception as e:
+    #     logging.exception("Ошибка при создании заказа")
+    #     db.session.rollback()  # отменяем все изменения, сделанные в транзакции
+    #     return jsonify({'error': 'Ошибка при обработке заказа'}), 500
 
 
 
@@ -1211,7 +1321,6 @@ from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.chrome.options import Options
 import uuid
 from typing import Dict
-import threading
 from sqlalchemy.exc import IntegrityError, NoResultFound
 from sqlalchemy.orm import Session
 import logging
@@ -1315,7 +1424,39 @@ def add_category_if_not_exists(session: Session, category_name: str):
             session.rollback()
             return session.query(Category).filter_by(name=category_name).first()
         
+import requests
 
+DEFAULT_IMAGE_PATH = "https://storage.googleapis.com/lego-bricks-app-frontend/default.jpg"
+
+       
+def check_and_update_image(image_ids, color_name, app):
+    with app.app_context():
+        session = db.create_scoped_session()
+        try:
+            image_obj = session.query(Images).filter(
+                Images.ids == image_ids,
+                Images.color == color_name
+            ).first()
+            if not image_obj:
+                return
+
+            try:
+                response = requests.head(image_obj.image_url, timeout=5)
+                if response.status_code != 200:
+                    image_obj.image_url = DEFAULT_IMAGE_PATH
+            except requests.RequestException:
+                image_obj.image_url = DEFAULT_IMAGE_PATH
+
+            session.commit()
+            logging.info(f"Исправлено check_and_update_image для id={image_ids}")
+        except Exception as e:
+            session.rollback()
+            logging.exception(f"Ошибка в check_and_update_image для id={image_ids}: {e}")
+        finally:
+            session.remove()
+        
+
+from concurrent.futures import ThreadPoolExecutor
 
 def process_db_add(file_name: str, task_id: str):
     with app.app_context():
@@ -1334,6 +1475,8 @@ def process_db_add(file_name: str, task_id: str):
             db.session.query(Category).delete()
             db.session.commit()
 
+            executor = ThreadPoolExecutor(max_workers=10)
+
             for row in reader:
                 row = {k.strip() if k is not None else '': v for k, v in row.items()}
 
@@ -1350,6 +1493,10 @@ def process_db_add(file_name: str, task_id: str):
 
                 new_image = Images(ids=item_no, color=color_name, image_url=image_url)
                 db.session.add(new_image)
+                db.session.flush()  # чтобы new_image.id стал доступен, если нужно
+
+                # Запускаем проверку в отдельном потоке, передавая app, ids и color
+                executor.submit(check_and_update_image, new_image.ids, new_image.color, app)
                 
                 category_obj = add_category_if_not_exists(db.session, category_name)
 
