@@ -1461,6 +1461,107 @@ def check_and_update_image(image_ids, color_name, app):
 
 from concurrent.futures import ThreadPoolExecutor
 
+# def process_db_add(file_name: str, task_id: str):
+#     with app.app_context():
+#         update_task_status(task_id, status='processing', message='Загрузка началась')
+#         try:
+#             bucket = storage_client.bucket(BUCKET_NAME)
+#             blob = bucket.blob(file_name)
+#             content = blob.download_as_text(encoding='utf-8')
+
+#             reader = csv.DictReader(io.StringIO(content))
+
+#             db.session.query(OrderItem).delete()
+#             db.session.query(MoreId).delete()
+#             db.session.query(Images).delete()
+#             db.session.query(CatalogItem).delete()
+#             db.session.query(Category).delete()
+#             db.session.commit()
+
+#             executor = ThreadPoolExecutor(max_workers=10)
+
+#             for row in reader:
+#                 row = {k.strip() if k is not None else '': v for k, v in row.items()}
+
+#                 item_no = row.get('Item No', '').strip()
+#                 color_name = row.get('Color', '').strip()
+#                 category_name = row['Category'].strip()
+#                 color_number = color_dict.get(color_name, '0')
+
+#                 if "Instruction" in category_name:
+#                     image_url = f"http://34.160.149.248/ItemImage/IN/{color_number}/{item_no}.png"
+#                 else:
+#                     image_url = f"http://34.160.149.248/ItemImage/PN/{color_number}/{item_no}.png"
+
+
+#                 new_image = Images(ids=item_no, color=color_name, image_url=image_url)
+#                 db.session.add(new_image)
+#                 db.session.flush()  # чтобы new_image.id стал доступен, если нужно
+
+#                 # Запускаем проверку в отдельном потоке, передавая app, ids и color
+#                 executor.submit(check_and_update_image, new_image.ids, new_image.color, app)
+                
+#                 category_obj = add_category_if_not_exists(db.session, category_name)
+
+#                 def parse_float(value):
+#                     try:
+#                         return float(value.replace('$', '').strip()) if value else None
+#                     except:
+#                         return None
+
+#                 def parse_int(value):
+#                     try:
+#                         return int(value) if value else None
+#                     except:
+#                         return None
+
+#                 def str_to_bool(val):
+#                     return val.lower() in ('true', '1', 'yes')
+
+#                 item = CatalogItem(
+#                     lot_id=row['Lot ID'].strip(),
+#                     color=row['Color'].strip(),
+#                     category_id=category_obj.id,
+#                     condition=row.get('Condition', '').strip(),
+#                     sub_condition=row.get('Sub-Condition', '').strip(),
+#                     description=row.get('Description', '').strip(),
+#                     remarks=row.get('Remarks', '').strip(),
+#                     price=parse_float(row.get('Price')),
+#                     quantity=parse_int(row.get('Quantity')),
+#                     bulk=str_to_bool(row.get('Bulk', 'False')),
+#                     sale=str_to_bool(row.get('Sale', 'False')),
+#                     url=image_url,
+#                     item_no=item_no,
+#                     tier_qty_1=parse_int(row['Tier Qty 1']),
+#                     tier_price_1=parse_float(row['Tier Price 1']),
+#                     tier_qty_2=parse_int(row['Tier Qty 2']),
+#                     tier_price_2=parse_float(row['Tier Price 2']),
+#                     tier_qty_3=parse_int(row['Tier Qty 3']),
+#                     tier_price_3=parse_float(row['Tier Price 3']),
+#                     reserved_for=row.get('Reserved For', '').strip(),
+#                     stockroom=row.get('Stockroom', '').strip(),
+#                     retain=str_to_bool(row.get('Retain', 'False')),
+#                     super_lot_id=row.get('Super Lot ID', '').strip(),
+#                     super_lot_qty=parse_int(row.get('Super Lot Qty')),
+#                     weight=parse_float(row.get('Weight')),
+#                     extended_description=row.get('Extended Description', '').strip(),
+                    
+#                     date_added=datetime.strptime(row['Date Added'], '%m/%d/%Y') if row.get('Date Added') else None,
+                    
+#                     date_last_sold=datetime.strptime(row['Date Last Sold'], '%Y-%m-%d') if row.get('Date Last Sold') else None,
+                    
+#                     currency=row.get('Currency', '').strip()
+#                 )
+#                 db.session.add(item)
+
+#             db.session.commit()
+
+#             update_task_status(task_id, status='completed', message='Все действия выполнены')
+#         except Exception as e:
+#             logging.exception("Ошибка при обработке файла")
+#             db.session.rollback()
+#             update_task_status(task_id, status='error', message=str(e))
+            
 def process_db_add(file_name: str, task_id: str):
     with app.app_context():
         update_task_status(task_id, status='processing', message='Загрузка началась')
@@ -1471,16 +1572,22 @@ def process_db_add(file_name: str, task_id: str):
 
             reader = csv.DictReader(io.StringIO(content))
 
+            # Считаем общее число записей:
+            all_rows = list(reader)
+            total_rows = len(all_rows)
+
+            # Перед этим нужно очистить таблицы:
             db.session.query(OrderItem).delete()
             db.session.query(MoreId).delete()
             db.session.query(Images).delete()
             db.session.query(CatalogItem).delete()
             db.session.query(Category).delete()
+            db.session.query(TaskStatus).delete()
             db.session.commit()
 
             executor = ThreadPoolExecutor(max_workers=10)
 
-            for row in reader:
+            for idx, row in enumerate(all_rows, start=1):
                 row = {k.strip() if k is not None else '': v for k, v in row.items()}
 
                 item_no = row.get('Item No', '').strip()
@@ -1493,14 +1600,12 @@ def process_db_add(file_name: str, task_id: str):
                 else:
                     image_url = f"http://34.160.149.248/ItemImage/PN/{color_number}/{item_no}.png"
 
-
                 new_image = Images(ids=item_no, color=color_name, image_url=image_url)
                 db.session.add(new_image)
-                db.session.flush()  # чтобы new_image.id стал доступен, если нужно
+                db.session.flush()
 
-                # Запускаем проверку в отдельном потоке, передавая app, ids и color
                 executor.submit(check_and_update_image, new_image.ids, new_image.color, app)
-                
+
                 category_obj = add_category_if_not_exists(db.session, category_name)
 
                 def parse_float(value):
@@ -1545,14 +1650,21 @@ def process_db_add(file_name: str, task_id: str):
                     super_lot_qty=parse_int(row.get('Super Lot Qty')),
                     weight=parse_float(row.get('Weight')),
                     extended_description=row.get('Extended Description', '').strip(),
-                    
                     date_added=datetime.strptime(row['Date Added'], '%m/%d/%Y') if row.get('Date Added') else None,
-                    
                     date_last_sold=datetime.strptime(row['Date Last Sold'], '%Y-%m-%d') if row.get('Date Last Sold') else None,
-                    
                     currency=row.get('Currency', '').strip()
                 )
                 db.session.add(item)
+
+                # Обновление статуса после каждых 200 записей
+                if idx % 200 == 0 or idx == total_rows:
+                    msg = f"Загружено {idx} записей из {total_rows}"
+                    logging.info(msg)
+                    update_task_status(
+                        task_id,
+                        status='processing',
+                        message=msg
+                    )
 
             db.session.commit()
 
