@@ -27,11 +27,11 @@ DB_PASS = os.getenv("DB_PASS")
 DB_NAME = os.getenv("DB_NAME")
 INSTANCE_CONNECTION_NAME = os.getenv("INSTANCE_CONNECTION_NAME")
 
-# app.config['SQLALCHEMY_DATABASE_URI'] = (
-#     f"postgresql+psycopg2://{DB_USER}:{DB_PASS}@/"
-#     f"{DB_NAME}?host=/cloudsql/{INSTANCE_CONNECTION_NAME}"
-# )
-app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://postgres:postgres@db:5432/mydb'
+app.config['SQLALCHEMY_DATABASE_URI'] = (
+    f"postgresql+psycopg2://{DB_USER}:{DB_PASS}@/"
+    f"{DB_NAME}?host=/cloudsql/{INSTANCE_CONNECTION_NAME}"
+)
+# app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://postgres:postgres@db:5432/mydb'
 app.config['SECRET_KEY'] = 'very_secret_key'
 app.secret_key = 'very_secret_key'
 db = SQLAlchemy(app)
@@ -1391,7 +1391,17 @@ def update_task_status(task_id: str, status: str, message: str):
         db.session.commit()
     except NoResultFound:
         create_task_status(task_id, status, message)
+        
+def update_task_message(task_id, message):
+    status_record = get_task_status_by_id(task_id)
+    if status_record:
+        status_record.message = message
+        db.session.commit()
 
+
+def clear_task_statuses():
+    db.session.query(TaskStatus).delete()
+    db.session.commit()
 
 def get_or_create(session: Session, model, defaults=None, commit_required=True, **kwargs):
     instance = session.query(model).filter_by(**kwargs).first()
@@ -1413,170 +1423,55 @@ def get_or_create(session: Session, model, defaults=None, commit_required=True, 
             instance = session.query(model).filter_by(**kwargs).first()
             return instance, False
 
-def add_category_if_not_exists(session: Session, category_name: str):
-    category = session.query(Category).filter_by(name=category_name).first()
-    if category:
-        return category
-    else:
-        new_category = Category(name=category_name)
-        session.add(new_category)
-        try:
-            session.commit()
-            return new_category
-        except IntegrityError:
-            session.rollback()
-            return session.query(Category).filter_by(name=category_name).first()
-        
-import requests
+# import requests
 
-DEFAULT_IMAGE_PATH = "https://storage.googleapis.com/lego-bricks-app-frontend/default.jpg"
+# DEFAULT_IMAGE_PATH = "https://storage.googleapis.com/lego-bricks-app-frontend/default.jpg"
 
        
-def check_and_update_image(image_ids, color_name, app):
-    with app.app_context():
-        session = db.create_scoped_session()
-        try:
-            image_obj = session.query(Images).filter(
-                Images.ids == image_ids,
-                Images.color == color_name
-            ).first()
-            if not image_obj:
-                return
-
-            try:
-                response = requests.head(image_obj.image_url, timeout=5)
-                if response.status_code != 200:
-                    image_obj.image_url = DEFAULT_IMAGE_PATH
-            except requests.RequestException:
-                image_obj.image_url = DEFAULT_IMAGE_PATH
-
-            session.commit()
-            logging.info(f"Исправлено check_and_update_image для id={image_ids}")
-        except Exception as e:
-            session.rollback()
-            logging.exception(f"Ошибка в check_and_update_image для id={image_ids}: {e}")
-        finally:
-            session.remove()
+# def check_and_update_image(image_ids, color_name, app):
+#     with app.app_context():
+#         session = db.create_scoped_session()
+#         try:
+#             image_obj = session.query(Images).filter(
+#                 Images.ids == image_ids,
+#                 Images.color == color_name
+#             ).first()
+#             if not image_obj:
+#                 return
+#
+#             try:
+#                 response = requests.head(image_obj.image_url, timeout=5)
+#                 if response.status_code != 200:
+#                     image_obj.image_url = DEFAULT_IMAGE_PATH
+#             except requests.RequestException:
+#                 image_obj.image_url = DEFAULT_IMAGE_PATH
+#
+#             session.commit()
+#             logging.info(f"Исправлено check_and_update_image для id={image_ids}")
+#         except Exception as e:
+#             session.rollback()
+#             logging.exception(f"Ошибка в check_and_update_image для id={image_ids}: {e}")
+#         finally:
+#             session.remove()
         
 
-from concurrent.futures import ThreadPoolExecutor
-
-# def process_db_add(file_name: str, task_id: str):
-#     with app.app_context():
-#         update_task_status(task_id, status='processing', message='Загрузка началась')
-#         try:
-#             bucket = storage_client.bucket(BUCKET_NAME)
-#             blob = bucket.blob(file_name)
-#             content = blob.download_as_text(encoding='utf-8')
-
-#             reader = csv.DictReader(io.StringIO(content))
-
-#             db.session.query(OrderItem).delete()
-#             db.session.query(MoreId).delete()
-#             db.session.query(Images).delete()
-#             db.session.query(CatalogItem).delete()
-#             db.session.query(Category).delete()
-#             db.session.commit()
-
-#             executor = ThreadPoolExecutor(max_workers=10)
-
-#             for row in reader:
-#                 row = {k.strip() if k is not None else '': v for k, v in row.items()}
-
-#                 item_no = row.get('Item No', '').strip()
-#                 color_name = row.get('Color', '').strip()
-#                 category_name = row['Category'].strip()
-#                 color_number = color_dict.get(color_name, '0')
-
-#                 if "Instruction" in category_name:
-#                     image_url = f"http://34.160.149.248/ItemImage/IN/{color_number}/{item_no}.png"
-#                 else:
-#                     image_url = f"http://34.160.149.248/ItemImage/PN/{color_number}/{item_no}.png"
+# from concurrent.futures import ThreadPoolExecutor
 
 
-#                 new_image = Images(ids=item_no, color=color_name, image_url=image_url)
-#                 db.session.add(new_image)
-#                 db.session.flush()  # чтобы new_image.id стал доступен, если нужно
-
-#                 # Запускаем проверку в отдельном потоке, передавая app, ids и color
-#                 executor.submit(check_and_update_image, new_image.ids, new_image.color, app)
-                
-#                 category_obj = add_category_if_not_exists(db.session, category_name)
-
-#                 def parse_float(value):
-#                     try:
-#                         return float(value.replace('$', '').strip()) if value else None
-#                     except:
-#                         return None
-
-#                 def parse_int(value):
-#                     try:
-#                         return int(value) if value else None
-#                     except:
-#                         return None
-
-#                 def str_to_bool(val):
-#                     return val.lower() in ('true', '1', 'yes')
-
-#                 item = CatalogItem(
-#                     lot_id=row['Lot ID'].strip(),
-#                     color=row['Color'].strip(),
-#                     category_id=category_obj.id,
-#                     condition=row.get('Condition', '').strip(),
-#                     sub_condition=row.get('Sub-Condition', '').strip(),
-#                     description=row.get('Description', '').strip(),
-#                     remarks=row.get('Remarks', '').strip(),
-#                     price=parse_float(row.get('Price')),
-#                     quantity=parse_int(row.get('Quantity')),
-#                     bulk=str_to_bool(row.get('Bulk', 'False')),
-#                     sale=str_to_bool(row.get('Sale', 'False')),
-#                     url=image_url,
-#                     item_no=item_no,
-#                     tier_qty_1=parse_int(row['Tier Qty 1']),
-#                     tier_price_1=parse_float(row['Tier Price 1']),
-#                     tier_qty_2=parse_int(row['Tier Qty 2']),
-#                     tier_price_2=parse_float(row['Tier Price 2']),
-#                     tier_qty_3=parse_int(row['Tier Qty 3']),
-#                     tier_price_3=parse_float(row['Tier Price 3']),
-#                     reserved_for=row.get('Reserved For', '').strip(),
-#                     stockroom=row.get('Stockroom', '').strip(),
-#                     retain=str_to_bool(row.get('Retain', 'False')),
-#                     super_lot_id=row.get('Super Lot ID', '').strip(),
-#                     super_lot_qty=parse_int(row.get('Super Lot Qty')),
-#                     weight=parse_float(row.get('Weight')),
-#                     extended_description=row.get('Extended Description', '').strip(),
-                    
-#                     date_added=datetime.strptime(row['Date Added'], '%m/%d/%Y') if row.get('Date Added') else None,
-                    
-#                     date_last_sold=datetime.strptime(row['Date Last Sold'], '%Y-%m-%d') if row.get('Date Last Sold') else None,
-                    
-#                     currency=row.get('Currency', '').strip()
-#                 )
-#                 db.session.add(item)
-
-#             db.session.commit()
-
-#             update_task_status(task_id, status='completed', message='Все действия выполнены')
-#         except Exception as e:
-#             logging.exception("Ошибка при обработке файла")
-#             db.session.rollback()
-#             update_task_status(task_id, status='error', message=str(e))
-            
 def process_db_add(file_name: str, task_id: str):
     with app.app_context():
-        update_task_status(task_id, status='processing', message='Загрузка началась')
+        update_task_status(task_id, status="processing", message="Загрузка началась")
         try:
+            # Читаем CSV из GCS
             bucket = storage_client.bucket(BUCKET_NAME)
             blob = bucket.blob(file_name)
-            content = blob.download_as_text(encoding='utf-8')
+            content = blob.download_as_text(encoding="utf-8")
 
-            reader = csv.DictReader(io.StringIO(content))
+            reader = list(csv.DictReader(io.StringIO(content)))
+            total_rows = len(reader)
+            processed = 0
 
-            # Считаем общее число записей:
-            all_rows = list(reader)
-            total_rows = len(all_rows)
-
-            # Перед этим нужно очистить таблицы:
+            # Очистка базы
             db.session.query(OrderItem).delete()
             db.session.query(MoreId).delete()
             db.session.query(Images).delete()
@@ -1584,95 +1479,169 @@ def process_db_add(file_name: str, task_id: str):
             db.session.query(Category).delete()
             db.session.query(TaskStatus).delete()
             db.session.commit()
+            
+            update_task_status(
+                task_id,
+                status="delete_complete",
+                message="Очистка базы данных завершена",
+            )
 
-            executor = ThreadPoolExecutor(max_workers=10)
+            # Подготовим категории одним махом
+            category_names = {row["Category"].strip() for row in reader}
+            existing_categories = (
+                db.session.query(Category)
+                .filter(Category.name.in_(category_names))
+                .all()
+            )
+            category_map = {c.name: c.id for c in existing_categories}
 
+            new_categories = [
+                {"name": name}
+                for name in category_names
+                if name not in category_map
+            ]
+            if new_categories:
+                db.session.bulk_insert_mappings(Category, new_categories)
+                db.session.commit()
+                # перечитываем категории, чтобы получить id
+                all_categories = (
+                    db.session.query(Category)
+                    .filter(Category.name.in_(category_names))
+                    .all()
+                )
+                category_map = {c.name: c.id for c in all_categories}
+
+            # executor = ThreadPoolExecutor(max_workers=3)
+
+            batch_size = 1000
+            images_batch = []
+            catalog_batch = []
+
+            def parse_float(value):
+                try:
+                    return (
+                        float(value.replace("$", "").strip())
+                        if value
+                        else None
+                    )
+                except Exception:
+                    return None
+
+            def parse_int(value):
+                try:
+                    return int(value) if value else None
+                except Exception:
+                    return None
+
+            def str_to_bool(val):
+                return val and val.lower() in ("true", "1", "yes")
+
+
+            all_rows = list(reader)
+            total_rows = len(all_rows)
             for idx, row in enumerate(all_rows, start=1):
-                row = {k.strip() if k is not None else '': v for k, v in row.items()}
+                row = {
+                    k.strip() if k is not None else "": v
+                    for k, v in row.items()
+                }
 
-                item_no = row.get('Item No', '').strip()
-                color_name = row.get('Color', '').strip()
-                category_name = row['Category'].strip()
-                color_number = color_dict.get(color_name, '0')
+                item_no = row.get("Item No", "").strip()
+                color_name = row.get("Color", "").strip()
+                category_name = row["Category"].strip()
+                category_id = category_map.get(category_name)
+                color_number = color_dict.get(color_name, "0")
 
                 if "Instruction" in category_name:
                     image_url = f"http://34.160.149.248/ItemImage/IN/{color_number}/{item_no}.png"
                 else:
                     image_url = f"http://34.160.149.248/ItemImage/PN/{color_number}/{item_no}.png"
 
-                new_image = Images(ids=item_no, color=color_name, image_url=image_url)
-                db.session.add(new_image)
-                db.session.flush()
-
-                executor.submit(check_and_update_image, new_image.ids, new_image.color, app)
-
-                category_obj = add_category_if_not_exists(db.session, category_name)
-
-                def parse_float(value):
-                    try:
-                        return float(value.replace('$', '').strip()) if value else None
-                    except:
-                        return None
-
-                def parse_int(value):
-                    try:
-                        return int(value) if value else None
-                    except:
-                        return None
-
-                def str_to_bool(val):
-                    return val.lower() in ('true', '1', 'yes')
-
-                item = CatalogItem(
-                    lot_id=row['Lot ID'].strip(),
-                    color=row['Color'].strip(),
-                    category_id=category_obj.id,
-                    condition=row.get('Condition', '').strip(),
-                    sub_condition=row.get('Sub-Condition', '').strip(),
-                    description=row.get('Description', '').strip(),
-                    remarks=row.get('Remarks', '').strip(),
-                    price=parse_float(row.get('Price')),
-                    quantity=parse_int(row.get('Quantity')),
-                    bulk=str_to_bool(row.get('Bulk', 'False')),
-                    sale=str_to_bool(row.get('Sale', 'False')),
-                    url=image_url,
-                    item_no=item_no,
-                    tier_qty_1=parse_int(row['Tier Qty 1']),
-                    tier_price_1=parse_float(row['Tier Price 1']),
-                    tier_qty_2=parse_int(row['Tier Qty 2']),
-                    tier_price_2=parse_float(row['Tier Price 2']),
-                    tier_qty_3=parse_int(row['Tier Qty 3']),
-                    tier_price_3=parse_float(row['Tier Price 3']),
-                    reserved_for=row.get('Reserved For', '').strip(),
-                    stockroom=row.get('Stockroom', '').strip(),
-                    retain=str_to_bool(row.get('Retain', 'False')),
-                    super_lot_id=row.get('Super Lot ID', '').strip(),
-                    super_lot_qty=parse_int(row.get('Super Lot Qty')),
-                    weight=parse_float(row.get('Weight')),
-                    extended_description=row.get('Extended Description', '').strip(),
-                    date_added=datetime.strptime(row['Date Added'], '%m/%d/%Y') if row.get('Date Added') else None,
-                    date_last_sold=datetime.strptime(row['Date Last Sold'], '%Y-%m-%d') if row.get('Date Last Sold') else None,
-                    currency=row.get('Currency', '').strip()
+                images_batch.append(
+                    {
+                        "ids": item_no,
+                        "color": color_name,
+                        "image_url": image_url,
+                    }
                 )
-                db.session.add(item)
 
-                # Обновление статуса после каждых 200 записей
-                if idx % 200 == 0 or idx == total_rows:
-                    msg = f"Загружено {idx} записей из {total_rows}"
-                    logging.info(msg)
+                # Асинхронная проверка картинки
+                # executor.submit(check_and_update_image, item_no, color_name, app)
+
+                catalog_batch.append(
+                    {
+                        "lot_id": row["Lot ID"].strip(),
+                        "color": color_name,
+                        "category_id": category_id,
+                        "condition": row.get("Condition", "").strip(),
+                        "sub_condition": row.get("Sub-Condition", "").strip(),
+                        "description": row.get("Description", "").strip(),
+                        "remarks": row.get("Remarks", "").strip(),
+                        "price": parse_float(row.get("Price")),
+                        "quantity": parse_int(row.get("Quantity")),
+                        "bulk": str_to_bool(row.get("Bulk", "False")),
+                        "sale": str_to_bool(row.get("Sale", "False")),
+                        "url": image_url,
+                        "item_no": item_no,
+                        "tier_qty_1": parse_int(row["Tier Qty 1"]),
+                        "tier_price_1": parse_float(row["Tier Price 1"]),
+                        "tier_qty_2": parse_int(row["Tier Qty 2"]),
+                        "tier_price_2": parse_float(row["Tier Price 2"]),
+                        "tier_qty_3": parse_int(row["Tier Qty 3"]),
+                        "tier_price_3": parse_float(row["Tier Price 3"]),
+                        "reserved_for": row.get("Reserved For", "").strip(),
+                        "stockroom": row.get("Stockroom", "").strip(),
+                        "retain": str_to_bool(row.get("Retain", "False")),
+                        "super_lot_id": row.get("Super Lot ID", "").strip(),
+                        "super_lot_qty": parse_int(row.get("Super Lot Qty")),
+                        "weight": parse_float(row.get("Weight")),
+                        "extended_description": row.get(
+                            "Extended Description", ""
+                        ).strip(),
+                        "date_added": datetime.strptime(
+                            row["Date Added"], "%m/%d/%Y"
+                        )
+                        if row.get("Date Added")
+                        else None,
+                        "date_last_sold": datetime.strptime(
+                            row["Date Last Sold"], "%Y-%m-%d"
+                        )
+                        if row.get("Date Last Sold")
+                        else None,
+                        "currency": row.get("Currency", "").strip(),
+                    }
+                )
+
+                processed += 1
+                if processed % batch_size == 0 or processed == total_rows:
+                    if images_batch:
+                        db.session.bulk_insert_mappings(Images, images_batch)
+                        images_batch.clear()
+
+                    if catalog_batch:
+                        db.session.bulk_insert_mappings(
+                            CatalogItem, catalog_batch
+                        )
+                        catalog_batch.clear()
+
+                    db.session.commit()
                     update_task_status(
                         task_id,
-                        status='processing',
-                        message=msg
+                        status="processing",
+                        message=f"Загружено {processed} из {total_rows}",
                     )
 
-            db.session.commit()
+                if idx % 200 == 0 or idx == total_rows:
+                        msg = f"Загружено {idx} записей из {total_rows}"
+                        update_task_message(task_id, msg)
+                        
+            update_task_status(
+                task_id, status="completed", message="Все действия выполнены"
+            )
 
-            update_task_status(task_id, status='completed', message='Все действия выполнены')
         except Exception as e:
             logging.exception("Ошибка при обработке файла")
             db.session.rollback()
-            update_task_status(task_id, status='error', message=str(e))
+            update_task_status(task_id, status="error", message=str(e))
 
 
 @app.route("/db_add", methods=["POST"])
@@ -1682,6 +1651,8 @@ def db_add():
         return jsonify({"error": "Параметр 'file_name' обязателен"}), 400
     
     file_name = data['file_name']
+
+    clear_task_statuses()
 
     task_id = str(uuid.uuid4())
     create_task_status(task_id=task_id, status='pending', message='Задача создана')
