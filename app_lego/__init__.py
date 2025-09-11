@@ -1391,6 +1391,12 @@ def update_task_status(task_id: str, status: str, message: str):
         db.session.commit()
     except NoResultFound:
         create_task_status(task_id, status, message)
+        
+def update_task_message(task_id, message):
+    status_record = get_task_status_by_id(task_id)
+    if status_record:
+        status_record.message = message
+        db.session.commit()
 
 
 def clear_task_statuses():
@@ -1471,7 +1477,9 @@ def process_db_add(file_name: str, task_id: str):
             db.session.query(Images).delete()
             db.session.query(CatalogItem).delete()
             db.session.query(Category).delete()
+            db.session.query(TaskStatus).delete()
             db.session.commit()
+            
             update_task_status(
                 task_id,
                 status="delete_complete",
@@ -1528,7 +1536,10 @@ def process_db_add(file_name: str, task_id: str):
             def str_to_bool(val):
                 return val and val.lower() in ("true", "1", "yes")
 
-            for row in reader:
+
+            all_rows = list(reader)
+            total_rows = len(all_rows)
+            for idx, row in enumerate(all_rows, start=1):
                 row = {
                     k.strip() if k is not None else "": v
                     for k, v in row.items()
@@ -1619,6 +1630,10 @@ def process_db_add(file_name: str, task_id: str):
                         message=f"Загружено {processed} из {total_rows}",
                     )
 
+                if idx % 200 == 0 or idx == total_rows:
+                        msg = f"Загружено {idx} записей из {total_rows}"
+                        update_task_message(task_id, msg)
+                        
             update_task_status(
                 task_id, status="completed", message="Все действия выполнены"
             )
