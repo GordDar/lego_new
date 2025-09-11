@@ -167,7 +167,7 @@ def get_catalog():
     query = CatalogItem.query.join(Category, CatalogItem.category_id == Category.id)
         # .filter(Category.name.ilike("%Parts%"))
 
-    if search_category:
+    if search_category and not search:
         if search_category == 'Parts':
             category_obj = Category.query.filter(Category.name.ilike(f"{search_category}%")).first()
         else:
