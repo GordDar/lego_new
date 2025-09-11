@@ -1536,10 +1536,7 @@ def process_db_add(file_name: str, task_id: str):
             def str_to_bool(val):
                 return val and val.lower() in ("true", "1", "yes")
 
-
-            all_rows = list(reader)
-            total_rows = len(all_rows)
-            for idx, row in enumerate(all_rows, start=1):
+            for row in reader:
                 row = {
                     k.strip() if k is not None else "": v
                     for k, v in row.items()
@@ -1630,10 +1627,6 @@ def process_db_add(file_name: str, task_id: str):
                         message=f"Загружено {processed} из {total_rows}",
                     )
 
-                if idx % 200 == 0 or idx == total_rows:
-                        msg = f"Загружено {idx} записей из {total_rows}"
-                        update_task_message(task_id, msg)
-                        
             update_task_status(
                 task_id, status="completed", message="Все действия выполнены"
             )
@@ -1651,8 +1644,6 @@ def db_add():
         return jsonify({"error": "Параметр 'file_name' обязателен"}), 400
     
     file_name = data['file_name']
-
-    clear_task_statuses()
 
     task_id = str(uuid.uuid4())
     create_task_status(task_id=task_id, status='pending', message='Задача создана')
