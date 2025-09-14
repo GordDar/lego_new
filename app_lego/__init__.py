@@ -27,11 +27,11 @@ DB_PASS = os.getenv("DB_PASS")
 DB_NAME = os.getenv("DB_NAME")
 INSTANCE_CONNECTION_NAME = os.getenv("INSTANCE_CONNECTION_NAME")
 
-app.config['SQLALCHEMY_DATABASE_URI'] = (
-    f"postgresql+psycopg2://{DB_USER}:{DB_PASS}@/"
-    f"{DB_NAME}?host=/cloudsql/{INSTANCE_CONNECTION_NAME}"
-)
-# app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://postgres:postgres@db:5432/mydb'
+# app.config['SQLALCHEMY_DATABASE_URI'] = (
+#     f"postgresql+psycopg2://{DB_USER}:{DB_PASS}@/"
+#     f"{DB_NAME}?host=/cloudsql/{INSTANCE_CONNECTION_NAME}"
+# )
+app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://postgres:postgres@db:5432/mydb'
 app.config['SECRET_KEY'] = 'very_secret_key'
 app.secret_key = 'very_secret_key'
 db = SQLAlchemy(app)
@@ -210,7 +210,9 @@ def get_catalog():
                 )
             )
 
-    query = query.order_by(CatalogItem.id)
+    # Изменённая сортировка:
+    query = query.order_by(CatalogItem.item_no.asc(), CatalogItem.color.asc())
+
     pagination = query.paginate(page=page, per_page=per_page, error_out=False)
     
     items = [{
@@ -867,11 +869,18 @@ import xml.etree.ElementTree as ET
 import tempfile
 
 def determine_item_type(item_no):
-    catalog_item = CatalogItem.query.filter_by(item_no=item_no).first()
-    category_id = catalog_item.category_id
-    category_name = Category.query.filter_by(id=category_id).first().name
+    if not item_no:
+        return 'P'
     
-    category_name_lower = category_name.lower()
+    catalog_item = CatalogItem.query.filter_by(item_no=item_no).first()
+    if not catalog_item:
+        return 'P'
+    
+    category = Category.query.filter_by(id=catalog_item.category_id).first()
+    if not category:
+        return 'P'
+    
+    category_name_lower = category.name.lower()
     
     if category_name_lower.startswith('instructions'):
         return 'I'
@@ -880,24 +889,24 @@ def determine_item_type(item_no):
     elif category_name_lower.startswith('minifigures'):
         return 'M'
     else:
-        return 'P' 
+        return 'P'
+
 
 def create_inventory_xml(items_data, color_dict):
     INVENTORY = ET.Element('INVENTORY')
     
     for item in items_data:
-        item_elem = ET.SubElement(INVENTORY, 'ITEM')
-        
         item_no = item.get('item_no')
-        
+        if not item_no:
+            logging.warning(f"Пропущен элемент без item_no: {item}")
+            continue
+
         item_type = determine_item_type(item_no)
         
         color_name = item.get('color')
-        color_code_value = ''
+        color_code_value = color_dict.get(color_name, '') if color_name else ''
         
-        if color_name and color_name in color_dict:
-            color_code_value = color_dict[color_name]
-        
+        item_elem = ET.SubElement(INVENTORY, 'ITEM')
         ET.SubElement(item_elem, 'ITEMTYPE').text = item_type
         ET.SubElement(item_elem, 'ITEMID').text = str(item_no)
         
@@ -1557,6 +1566,12 @@ def process_db_add(file_name: str, task_id: str):
 
                 if "Instruction" in category_name:
                     image_url = f"http://34.160.149.248/ItemImage/IN/{color_number}/{item_no}.png"
+                if "Minifigure" in category_name:
+                    image_url = f"http://34.160.149.248/ItemImage/MN/{color_number}/{item_no}.png"
+                if "Gear" in category_name:
+                    image_url = f"http://34.160.149.248/ItemImage/GN/{color_number}/{item_no}.png"
+                if "Sets" in category_name:
+                    image_url = f"http://34.160.149.248/ItemImage/SN/{color_number}/{item_no}.png"
                 else:
                     image_url = f"http://34.160.149.248/ItemImage/PN/{color_number}/{item_no}.png"
 
@@ -1808,9 +1823,15 @@ def parse_xml_from_gcs():
         found_items = []
         not_found_items = []
         for item in items:
-            item_id_text = item.find('ITEMID').text
-            color_value = item.find('COLOR').text 
-            
+            item_id_elem = item.find('ITEMID')
+            color_elem = item.find('COLOR')
+            item_id_text = item_id_elem.text if item_id_elem else None
+            color_value = color_elem.text if color_elem else None
+
+            if not item_id_text:
+                not_found_items.append(None)
+                print("ITEMID отсутствует, элемент пропущен")
+                continue
 
             color_key = None
             for key, value in color_dict.items():
@@ -1822,7 +1843,6 @@ def parse_xml_from_gcs():
             if color_key:
                 query = query.filter_by(color=color_key)
 
-            
             existing_item = query.first()
 
             if existing_item:
@@ -1851,7 +1871,6 @@ def parse_xml_from_gcs():
         return {
             'error_message': f'{e}'
         }, 400
-
 
 
 # --- 14. Выгрузка таблицы TaskStatus ---
