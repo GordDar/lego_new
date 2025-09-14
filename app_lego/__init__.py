@@ -235,89 +235,6 @@ def get_catalog():
     })
     
     
-# import requests    
-# DEFAULT_IMAGE_PATH = "https://storage.googleapis.com/lego-bricks-app-frontend/default.jpg"
-
-# @app.route('/catalog', methods=['GET'])
-# def get_catalog():
-#     search = request.args.get('search', '', type=str)
-#     search_category = request.args.get('category', '', type=str)
-#     page = request.args.get('page', 1, type=int)
-#     per_page = request.args.get('per_page', 30, type=int)
-    
-#     query = CatalogItem.query.join(Category, CatalogItem.category_id == Category.id)
-
-#     if search_category:
-#         if search_category == 'Parts':
-#             category_obj = Category.query.filter(Category.name.ilike(f"{search_category}%")).first()
-#         else:
-#             category_obj = Category.query.filter(Category.name == search_category).first()
-#         if category_obj:
-#             category_id = category_obj.id
-#             query = query.filter(CatalogItem.category_id == category_id)
-#         else:
-#             return jsonify({
-#                 'items': [],
-#                 'total': 0,
-#                 'pages': 0,
-#                 'current_page': page
-#             })
-        
-#     query = query.filter(CatalogItem.quantity > 0)
-
-#     if search:
-#         search_term = f"%{search}%"
-#         more_id_record = db.session.query(MoreId).filter(MoreId.old_id.ilike(search_term)).first()
-
-#         if more_id_record:
-#             ids_str = more_id_record.ids.strip()
-#             ids_list = [id_part.strip() for id_part in ids_str.split(',')]
-#             query = query.filter(CatalogItem.item_no.in_(ids_list))
-#         else:
-#             query = query.filter(
-#                 or_(
-#                     CatalogItem.color.ilike(search_term),
-#                     CatalogItem.description.ilike(search_term),
-#                     CatalogItem.item_no.ilike(search_term)
-#                 )
-#             )
-
-#     query = query.order_by(CatalogItem.id)
-#     pagination = query.paginate(page=page, per_page=per_page, error_out=False)
-    
-#     items = []
-#     for item in pagination.items:
-#         image_url = item.url
-#         if image_url:
-#             try:
-#                 response = requests.head(image_url, timeout=5)
-#                 if response.status_code != 200:
-#                     image_url = DEFAULT_IMAGE_PATH
-#             except requests.RequestException:
-#                 image_url = DEFAULT_IMAGE_PATH
-#         else:
-#             image_url = DEFAULT_IMAGE_PATH
-
-#         items.append({
-#             'id': item.id,
-#             'item_no': item.item_no,
-#             'url': image_url,
-#             'color': item.color,
-#             'description': item.description,
-#             'price': item.price,
-#             'quantity': item.quantity,
-#             'category_name': item.category.name if item.category else None,
-#             'remarks': item.remarks
-#         })
-
-#     return jsonify({
-#         'items': items,
-#         'total': pagination.total,
-#         'pages': pagination.pages,
-#         'current_page': pagination.page
-#     })
-
-
 
 
 
@@ -741,145 +658,23 @@ def submit_cart():
 
 
 
-
-
-
-# @app.route('/download_pdf', methods=['POST'])
-# def download_pdf():
-#     data = request.get_json()
-#     items_data = data.get('items')
-
-#     catalog_items_cache = {}
-#     order_details_for_email = []
-#     total_price = 0
-
-#     for item in items_data:
-#         item_id = item['id']
-#         quantity_requested = item.get('quantity', 1)
-
-#         if item_id not in catalog_items_cache:
-#             catalog_item = CatalogItem.query.get(item_id)
-#             if not catalog_item:
-#                 return jsonify({'error': f'Item with id {item_id} не найден'}), 404
-#             catalog_items_cache[item_id] = catalog_item
-#         else:
-#             catalog_item = catalog_items_cache[item_id]
-
-#         price_per_unit = getattr(catalog_item, 'price', 0)
-#         total_price += price_per_unit * quantity_requested
-
-#         order_details_for_email.append({
-#             'description': catalog_item.description,
-#             'image': catalog_item.url,
-#             'quantity_in_order': quantity_requested,
-#             'unit_price': price_per_unit,
-#             'total_price': price_per_unit * quantity_requested
-#         })
-
-#     total_price_value = sum(item['total_price'] for item in order_details_for_email)
-
-#     # Создаем HTML-шаблон
-#     html_content = f"""
-#     <html>
-#     <head>
-#         <meta charset="UTF-8">
-#         <style>
-#             body {{
-#                 font-family: DejaVu Sans, Arial, sans-serif;
-#                 margin: 40px;
-#             }}
-#             h1 {{
-#                 text-align: center;
-#                 font-size: 24px;
-#                 margin-bottom: 20px;
-#             }}
-#             table {{
-#                 width: 100%;
-#                 border-collapse: collapse;
-#                 margin-bottom: 20px;
-#             }}
-#             th, td {{
-#                 border: 1px solid #000;
-#                 padding: 8px;
-#                 text-align: left;
-#                 font-size: 14px;
-#             }}
-#             th {{
-#                 background-color: #f0f0f0;
-#             }}
-#             .total {{
-#                 text-align: right;
-#                 font-weight: bold;
-#                 font-size: 16px;
-#                 margin-top: 10px;
-#             }}
-#         </style>
-#     </head>
-#     <body>
-#         <h1>Детали заказа</h1>
-#         <table>
-#             <thead>
-#                 <tr>
-#                     <th>Изображение</th>
-#                     <th>Описание</th>
-#                     <th>Кол-во</th>
-#                     <th>Цена</th>
-#                     <th>Всего</th>
-#                 </tr>
-#             </thead>
-#             <tbody>
-#     """
-
-#     for item in order_details_for_email:
-#         html_content += f"""
-#                 <tr>
-#                     <td><img src="{item['image']}" alt="image" /></td>
-#                     <td>{item['description']}</td>
-#                     <td>{item['quantity_in_order']}</td>
-#                     <td>{item['unit_price']:.2f}</td>
-#                     <td>{item['total_price']:.2f}</td>
-#                 </tr>
-#         """
-
-#     html_content += f"""
-#             </tbody>
-#         </table>
-#         <div class="total">Общая сумма: {total_price_value:.2f}</div>
-#     </body>
-#     </html>
-#     """
-
-
-#     pdf_bytes = HTML(string=html_content).write_pdf()
-
-#     buffer = io.BytesIO(pdf_bytes)
-    
-#     return send_file(
-#         buffer,
-#         as_attachment=True,
-#         download_name="order_details.pdf",
-#         mimetype='application/pdf'
-#     )
-
-
-
 # --- 2.1   Обработка скачивания wanted list ---
 
 import xml.etree.ElementTree as ET
 import tempfile
 
-def determine_item_type(item_no):
-    if not item_no:
-        return 'P'
-    
-    catalog_item = CatalogItem.query.filter_by(item_no=item_no).first()
+def determine_item_type(item_id):
+    catalog_item = CatalogItem.query.filter_by(id=item_id).first()
     if not catalog_item:
-        return 'P'
+        # можно залогировать предупреждение и вернуть дефолт
+        app.logger.warning(f"CatalogItem с item_no={id} не найден")
+        return 'P'  # или другой подходящий дефолтный тип
     
     category = Category.query.filter_by(id=catalog_item.category_id).first()
-    if not category:
+    if not category or not category.name:
+        app.logger.warning(f"Category для item_no={id} не найдена")
         return 'P'
-    
+
     category_name_lower = category.name.lower()
     
     if category_name_lower.startswith('instructions'):
@@ -891,22 +686,45 @@ def determine_item_type(item_no):
     else:
         return 'P'
 
-
 def create_inventory_xml(items_data, color_dict):
     INVENTORY = ET.Element('INVENTORY')
     
     for item in items_data:
-        item_no = item.get('item_no')
-        if not item_no:
-            logging.warning(f"Пропущен элемент без item_no: {item}")
-            continue
-
-        item_type = determine_item_type(item_no)
-        
-        color_name = item.get('color')
-        color_code_value = color_dict.get(color_name, '') if color_name else ''
-        
         item_elem = ET.SubElement(INVENTORY, 'ITEM')
+        
+        # Получаем id из входных данных
+        item_id = item.get('id')
+        if not item_id:
+            app.logger.warning("В элементе items_data отсутствует 'id', пропускаю")
+            print("items_data:", items_data)
+            app.logger.info(f"items_data: {items_data}")
+            continue
+        
+        # Получаем объект из базы по id
+        catalog_item = CatalogItem.query.filter_by(id=item_id).first()
+        if not catalog_item:
+            app.logger.warning(f"CatalogItem с id={item_id} не найден, пропускаю")
+            continue
+        
+        # Определяем тип (по item_no из базы)
+        try:
+            item_type = determine_item_type(item_id)
+        except Exception as e:
+            app.logger.error(f"Ошибка при определении типа для item_no={catalog_item.item_no}: {e}")
+            item_type = 'P'  # дефолтный тип
+        
+        # Получаем item_no из базы
+        item_no = catalog_item.item_no
+        
+        # Цвет и код цвета
+        color_name = catalog_item.color
+        color_code_value = ''
+        if color_name and color_name in color_dict:
+            color_code_value = color_dict[color_name]
+        
+        # Количество берем из items_data, если нет — 1
+        quantity = item.get('quantity', 1)
+        
         ET.SubElement(item_elem, 'ITEMTYPE').text = item_type
         ET.SubElement(item_elem, 'ITEMID').text = str(item_no)
         
@@ -914,8 +732,12 @@ def create_inventory_xml(items_data, color_dict):
             ET.SubElement(item_elem, 'COLOR').text = str(color_code_value)
         
         ET.SubElement(item_elem, 'MAXPRICE').text = '-1.0000'
-        ET.SubElement(item_elem, 'MINQTY').text = str(item.get('quantity', 1))
-        ET.SubElement(item_elem, 'CONDITION').text = 'X'
+        ET.SubElement(item_elem, 'MINQTY').text = str(quantity)
+        condition = catalog_item.condition
+        if condition == 'Used':
+            ET.SubElement(item_elem, 'CONDITION').text = 'U'
+        else:
+            ET.SubElement(item_elem, 'CONDITION').text = 'X'
         ET.SubElement(item_elem, 'NOTIFY').text = 'N'
     
     return INVENTORY
