@@ -168,21 +168,28 @@ def get_catalog():
         # .filter(Category.name.ilike("%Parts%"))
 
     if search_category and not search:
+        category_ids = None
+        category_obj = None
         if search_category == 'Parts':
-            category_obj = Category.query.filter(Category.name.ilike(f"{search_category}%")).first()
+            category_objs = Category.query.filter(
+                Category.name.ilike(f"{search_category}%")
+            ).all()
+            category_ids = [c.id for c in category_objs]
+            if category_ids:
+                query = query.filter(CatalogItem.category_id.in_(category_ids))
         else:
-            category_obj = Category.query.filter(Category.name == search_category).first()
-        if category_obj:
-            category_id = category_obj.id
-            query = query.filter(CatalogItem.category_id == category_id)
-        else:
+            category_obj = Category.query.filter(
+                Category.name == search_category
+            ).first()
+            if category_obj:
+                query = query.filter(CatalogItem.category_id == category_obj.id)
+        if not category_ids and not category_obj:
             return jsonify({
                 'items': [],
                 'total': 0,
                 'pages': 0,
                 'current_page': page
             })
-        
 
     query = query.filter(CatalogItem.quantity > 0)
 
