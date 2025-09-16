@@ -683,6 +683,10 @@ def determine_item_type(item_id):
         return 'P'
     elif category_name_lower.startswith('minifigures'):
         return 'M'
+    elif category_name_lower.startswith('sets'):
+        return 'S'
+    elif category_name_lower.startswith('gear'):
+        return 'G'
     else:
         return 'P'
 
@@ -737,7 +741,7 @@ def create_inventory_xml(items_data, color_dict):
         if condition == 'Used':
             ET.SubElement(item_elem, 'CONDITION').text = 'U'
         else:
-            ET.SubElement(item_elem, 'CONDITION').text = 'X'
+            ET.SubElement(item_elem, 'CONDITION').text = 'N'
         ET.SubElement(item_elem, 'NOTIFY').text = 'N'
     
     return INVENTORY
@@ -889,7 +893,8 @@ def delete_order(order_id):
     order = Order.query.get(order_id)
     if not order:
         return jsonify({'error': 'Order not found'}), 404
-
+    
+    order.status = "исполнен"
     if order.status != 'исполнен':
         return jsonify({'error': 'Only completed orders can be deleted'}), 400
 
@@ -973,27 +978,66 @@ def save_order_comment(order_id):
 
 
 # --- 6. Структура категорий ---
-def build_nested_structure(categories):
+# def build_nested_structure(categories):
+#     structure = {}
+#     for category in categories:
+#         parts = [part.strip() for part in category.name.split('/')]
+#         current_level = structure
+#         for i, part in enumerate(parts):
+#             if i == len(parts) - 1:
+#                 current_level[part] = current_level.get(part, {})
+#             else:
+#                 if part not in current_level:
+#                     current_level[part] = {}
+#                 current_level = current_level[part]
+#     return structure
+
+
+# @app.get("/category-structure")
+# def get_category_structure():
+#     categories = Category.query.all()
+#     # categories = Category.query.filter(Category.catalog_items.any()).all()
+#     nested_structure = build_nested_structure(categories)
+    
+#     return jsonify(nested_structure)
+
+
+
+
+def build_custom_structure(categories):
     structure = {}
+
     for category in categories:
         parts = [part.strip() for part in category.name.split('/')]
         current_level = structure
+
         for i, part in enumerate(parts):
-            if i == len(parts) - 1:
-                current_level[part] = current_level.get(part, {})
+            is_last = (i == len(parts) - 1)
+
+            # Если это последний элемент пути категории
+            if is_last:
+                # Если в текущем уровне ещё нет ключа с именем категории с пробелом
+                key_with_space = part + " "
+
+                # Записываем данные категории в ключ с пробелом в конце
+                current_level[key_with_space] = {}
+
+                # Если ещё нет подкатегорий (то есть это лист), мы не создаём вложенность под этой категорией
             else:
+                # Для промежуточных узлов — создаём вложенный словарь, если его нет
                 if part not in current_level:
                     current_level[part] = {}
+
+                # Переходим к вложенному уровню
                 current_level = current_level[part]
+
     return structure
 
 
 @app.get("/category-structure")
 def get_category_structure():
     categories = Category.query.all()
-    # categories = Category.query.filter(Category.catalog_items.any()).all()
-    nested_structure = build_nested_structure(categories)
-    
+    nested_structure = build_custom_structure(categories)
     return jsonify(nested_structure)
 
 
@@ -1386,16 +1430,19 @@ def process_db_add(file_name: str, task_id: str):
                 category_id = category_map.get(category_name)
                 color_number = color_dict.get(color_name, "0")
 
-                if "Instruction" in category_name:
+                if category_name.startswith("Instructions"):
                     image_url = f"http://34.160.149.248/ItemImage/IN/{color_number}/{item_no}.png"
-                if "Minifigure" in category_name:
+                elif category_name.startswith("Minifigures"):
                     image_url = f"http://34.160.149.248/ItemImage/MN/{color_number}/{item_no}.png"
-                if "Gear" in category_name:
+                elif category_name.startswith("Gear"):
                     image_url = f"http://34.160.149.248/ItemImage/GN/{color_number}/{item_no}.png"
-                if "Sets" in category_name:
+                elif category_name.startswith("Sets"):
                     image_url = f"http://34.160.149.248/ItemImage/SN/{color_number}/{item_no}.png"
                 else:
                     image_url = f"http://34.160.149.248/ItemImage/PN/{color_number}/{item_no}.png"
+
+                    
+                app.logger.info(f"Category_name: '{category_name}', assigned image_url: {image_url}")
 
                 images_batch.append(
                     {
