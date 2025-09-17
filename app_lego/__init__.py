@@ -528,13 +528,13 @@ def submit_cart():
 
         catalog_item = catalog_items_cache.get(item_id)
         if not catalog_item:
-            return jsonify({'error': f'Item with id {item_id} not found'}), 404
+            return jsonify({'error': f'Товар с id {item_id} не найден в каталоге. Пожалуйста, очистите корзину и добавьте товары заново.'}), 409
 
         if catalog_item.quantity < quantity_requested:
             return jsonify({
-                'error': f'Not allowed amount "{catalog_item.description}". '
-                         f'Max count: {catalog_item.quantity}, Requested: {quantity_requested}'
-            }), 400
+                'error': f'Количество товара "{catalog_item.description}" в наличии изменилось. '
+                         f'Запрошено: {quantity_requested}. Количество, доступное к заказу: {catalog_item.quantity}.'
+            }), 409
 
         price_per_unit = getattr(catalog_item, 'price', 0)
         total_price += price_per_unit * quantity_requested
@@ -556,8 +556,8 @@ def submit_cart():
     
     if min_order_value is not None and total_price < min_order_value:
         return jsonify({
-            'error': f'Minimum order value {min_order_value}. Your cart value {total_price}'
-        }), 400
+            'error': f'Стоимость Вашей корзины меньше минимальной стоимости заказа. Стоимость корзины составляет {total_price}. Минимальная стоимость для заказа {min_order_value}.'
+        }), 409
 
     from datetime import datetime
     
