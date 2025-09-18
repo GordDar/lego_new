@@ -1217,26 +1217,26 @@ results_id = {}
 single_id_results = []    
 
 
-# def get_old_id_for_item(driver, item_no):
-#     url = f'https://www.bricklink.com/v2/catalog/catalogitem.page?P={item_no}'
-#     try:
-#         driver.get(url)
-#         wait = WebDriverWait(driver, 15)
-#         # Ждем появления блока с нужным id
-#         div_main = wait.until(EC.presence_of_element_located((By.ID, 'id_divBlock_Main')))
-#         # Находим первый <span> внутри этого блока
-#         span_element = div_main.find_element(By.TAG_NAME, 'span')
-#         text = span_element.text.strip()
+def get_old_id_for_item(driver, item_no):
+    url = f'https://www.bricklink.com/v2/catalog/catalogitem.page?P={item_no}'
+    try:
+        driver.get(url)
+        wait = WebDriverWait(driver, 15)
+        # Ждем появления блока с нужным id
+        div_main = wait.until(EC.presence_of_element_located((By.ID, 'id_divBlock_Main')))
+        # Находим первый <span> внутри этого блока
+        span_element = div_main.find_element(By.TAG_NAME, 'span')
+        text = span_element.text.strip()
 
-#         marker = 'Alternate Item No:'
-#         if marker in text:
-#             parts = text.split(marker, 1)
-#             if len(parts) > 1:
-#                 return parts[1].strip()
-#         return None
-#     except Exception as e:
-#         print(f"Ошибка при обработке item_no={item_no}: {e}")
-#         return None
+        marker = 'Alternate Item No:'
+        if marker in text:
+            parts = text.split(marker, 1)
+            if len(parts) > 1:
+                return parts[1].strip()
+        return None
+    except Exception as e:
+        print(f"Ошибка при обработке item_no={item_no}: {e}")
+        return None
 
 # Настройка драйвера
 options = Options()
@@ -1526,6 +1526,39 @@ def process_db_add(file_name: str, task_id: str):
             logging.exception("Ошибка при обработке файла")
             db.session.rollback()
             update_task_status(task_id, status="error", message=str(e))
+            
+        
+               
+        old_id_task_id = str(uuid.uuid4())
+        create_task_status(task_id=old_id_task_id, status='pending', message='Обновление old_id')
+
+        try:
+            catalog_items = CatalogItem.query.all()
+            
+            for item in catalog_items:
+                item_no = item.lot_id  # атрибут, который уникально идентифицирует элемент
+                more_old_id = get_old_id_for_item(driver, item_no)
+                
+                if more_old_id:
+                    # Создаём новый объект MoreId или обновляем существующий
+                    old_id_record = MoreId.query.filter_by(ids=item_no).first()
+                    if old_id_record:
+                        old_id_record.old_id = more_old_id  # обновляем
+                    else:
+                        new_old_id = MoreId(
+                            ids=item_no,
+                            old_id=more_old_id
+                        )
+                        db.session.add(new_old_id)
+            
+            db.session.commit()
+
+        except Exception as e:
+            update_task_status(old_id_task_id, "error", str(e))
+        else:
+            update_task_status(old_id_task_id, "completed", "Обновление old_id завершено")  
+                    
+            
 
 
 @app.route("/db_add", methods=["POST"])
@@ -1541,7 +1574,7 @@ def db_add():
     
     thread = threading.Thread(target=process_db_add, args=(file_name, task_id))
     thread.start()
-
+    
     return jsonify({"task_id": task_id})
 
 
