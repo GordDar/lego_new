@@ -1209,6 +1209,7 @@ from typing import Dict
 from sqlalchemy.exc import IntegrityError, NoResultFound
 from sqlalchemy.orm import Session
 import logging
+from selenium.common.exceptions import WebDriverException, TimeoutException
 
 
 results = []
@@ -1216,38 +1217,63 @@ results_dict = {}
 results_id = {}
 single_id_results = []    
 
+def create_driver():
+    options = Options()
+    options.binary_location = "/usr/bin/chromium"
+    options.add_argument("--headless")
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
+    service = Service("/usr/bin/chromedriver")
+    driver = webdriver.Chrome(service=service, options=options)
+    return driver
 
-def get_old_id_for_item(driver, item_no):
+def get_old_id_for_item(item_no, max_retries=2):
     url = f'https://www.bricklink.com/v2/catalog/catalogitem.page?P={item_no}'
-    try:
-        driver.get(url)
-        wait = WebDriverWait(driver, 15)
-        # Ждем появления блока с нужным id
-        div_main = wait.until(EC.presence_of_element_located((By.ID, 'id_divBlock_Main')))
-        # Находим первый <span> внутри этого блока
-        span_element = div_main.find_element(By.TAG_NAME, 'span')
-        text = span_element.text.strip()
+    # url = f'http://34.160.149.248/v2/catalog/catalogitem.page?P={item_no}'
+    attempt = 0
 
-        marker = 'Alternate Item No:'
-        if marker in text:
-            parts = text.split(marker, 1)
-            if len(parts) > 1:
-                return parts[1].strip()
-        return None
-    except Exception as e:
-        print(f"Ошибка при обработке item_no={item_no}: {e}")
-        return None
+    while attempt < max_retries:
+        driver = None
+        try:
+            driver = create_driver()
+            wait = WebDriverWait(driver, 15)
+            driver.get(url)
+            logging.info(f"Загружается страница для item_no={item_no}, попытка {attempt+1}")
+            
+            # Ждем блока с id='id_divBlock_Main'
+            div_main = wait.until(EC.presence_of_element_located((By.ID, 'id_divBlock_Main')))
+            logging.info("Блок с id='id_divBlock_Main' найден.")
+            
+            # После появления div, ищем внутри него <span>
+            span_element = div_main.find_element(By.TAG_NAME, 'span')
+            text = span_element.text.strip()
+            logging.info(f"Обнаружен текст внутри <span>: '{text}'")
+            
+            marker = 'Alternate Item No:'
+            if marker in text:
+                parts = text.split(marker, 1)
+                if len(parts) > 1:
+                    result = parts[1].strip()
+                    
+                    return result
+            else:
+                logging.info("Маркер 'Alternate Item No:' не найден в тексте.")
+            return None
+        except TimeoutException:
+            logging.warning(f"Timeout при загрузке item_no={item_no}, попытка {attempt+1}")
+        except WebDriverException as e:
+            logging.exception(f"WebDriverException для item_no={item_no}, попытка {attempt+1}: {e}")
+        except Exception as e:
+            logging.exception(f"Иная ошибка для item_no={item_no}, попытка {attempt+1}: {e}")
+        finally:
+            if driver:
+                driver.quit()
+            attempt += 1
+    
+    logging.error(f"Не удалось обработать item_no={item_no} после {max_retries} попыток")
+    return None
 
-# Настройка драйвера
-options = Options()
-options.binary_location = "/usr/bin/chromium"
-options.add_argument("--headless")
-options.add_argument("--no-sandbox")
-options.add_argument("--disable-dev-shm-usage")
 
-service = Service("/usr/bin/chromedriver")
-
-driver = webdriver.Chrome(service=service, options=options)
 
 def create_task_status(task_id: str, status: str, message: str):
     new_task_status = TaskStatus(task_id=task_id, status=status, message=message)
@@ -1355,7 +1381,6 @@ def process_db_add(file_name: str, task_id: str):
 
             # Очистка базы
             db.session.query(OrderItem).delete()
-            db.session.query(MoreId).delete()
             db.session.query(Images).delete()
             db.session.query(CatalogItem).delete()
             db.session.query(Category).delete()
@@ -1441,8 +1466,6 @@ def process_db_add(file_name: str, task_id: str):
                 else:
                     image_url = f"http://34.160.149.248/ItemImage/PN/{color_number}/{item_no}.png"
 
-                    
-                app.logger.info(f"Category_name: '{category_name}', assigned image_url: {image_url}")
 
                 images_batch.append(
                     {
@@ -1534,30 +1557,45 @@ def process_db_add(file_name: str, task_id: str):
 
         try:
             catalog_items = CatalogItem.query.all()
-            
-            for item in catalog_items:
-                item_no = item.lot_id  # атрибут, который уникально идентифицирует элемент
-                more_old_id = get_old_id_for_item(driver, item_no)
-                
-                if more_old_id:
-                    # Создаём новый объект MoreId или обновляем существующий
-                    old_id_record = MoreId.query.filter_by(ids=item_no).first()
-                    if old_id_record:
-                        old_id_record.old_id = more_old_id  # обновляем
-                    else:
-                        new_old_id = MoreId(
-                            ids=item_no,
-                            old_id=more_old_id
-                        )
-                        db.session.add(new_old_id)
-            
-            db.session.commit()
 
+            # Создаёте set всех item_no
+            item_no_set = {item.item_no for item in catalog_items}
+            logging.info(f"{item_no_set}")
+
+            for item_no in item_no_set:
+                # Проверка, есть ли уже запись в базе
+                existing_record = MoreId.query.filter_by(ids=item_no).first()
+                if existing_record:
+                    print(f"Для item_no={item_no} запись уже есть, пропускаем.")
+                    continue
+
+                # Проверка наличия old_id
+                more_old_id = get_old_id_for_item(item_no)
+
+                if more_old_id:
+                    single_id_results = [val.strip() for val in more_old_id.split(',')]
+                    for val in single_id_results:
+                        pair_record = MoreId(
+                            ids=item_no,
+                            old_id=val
+                        )
+                        db.session.add(pair_record)
+                else:
+                    logging.info(f"у lot_id - {item_no} нет альтернативного номера")
+                    pair_record = MoreId(
+                        ids=item_no,
+                        old_id='None'
+                    )
+                    db.session.add(pair_record)
+
+            db.session.commit()
+            logging.info("Обновление old_id завершено")
+            update_task_status(old_id_task_id, "completed", "Обновление old_id завершено")
         except Exception as e:
             update_task_status(old_id_task_id, "error", str(e))
         else:
-            update_task_status(old_id_task_id, "completed", "Обновление old_id завершено")  
-                    
+            update_task_status(old_id_task_id, "completed", "Обновление old_id завершено")
+                            
             
 
 
