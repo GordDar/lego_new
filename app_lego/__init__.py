@@ -1828,6 +1828,19 @@ def get_task_statuses():
     return jsonify(result)
 
 
+# --- 15. Удаление данных из таблицы MoreId (СТАРЫЕ id) ---
+@app.route('/delete_old_id', methods=['DELETE'])
+def delete_old_id():
+    try:
+        db.session.query(MoreId).delete()
+        db.session.commit()
+        return jsonify({"message": f"Данные из таблицы со старыми id удалены"}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
+
+
+
 
 
 
