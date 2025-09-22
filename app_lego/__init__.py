@@ -220,6 +220,7 @@ def get_catalog():
             'item_no': item.item_no,
             'url': item.url or 'https://storage.googleapis.com/lego-bricks-app-frontend/default.jpg',
             'color': item.color,
+            'lot_id': item.lot_id,
             'description': item.description,
             'price': item.price,
             'quantity': item.quantity,
@@ -296,6 +297,7 @@ def generate_order_pdf(order, order_details):
             <thead>
                 <tr>
                     <th>Изображение</th>
+                    <th>Id товара</th>
                     <th>Описание</th>
                     <th>Кол-во</th>
                     <th>Цена</th>
@@ -309,6 +311,7 @@ def generate_order_pdf(order, order_details):
         html_content += f"""
                 <tr>
                     <td><img src="{item['url']}" alt="image" style="max-width:100px; height:auto;"></td>
+                    <td>{item['item_no']}</td>
                     <td>{item['description']}</td>
                     <td>{item['quantity_in_order']}</td>
                     <td>{item['unit_price']:.2f}</td>
@@ -338,22 +341,25 @@ def download_pdf():
     order_details_for_pdf = []
 
     for item in items_data:
-        item_id = item['id']
+        logging.info(f"Полученный item: {item}")
+        item_id = item['item_no']
+        lot_id = item['lot_id']
         quantity_requested = item.get('quantity', 1)
 
-        if item_id not in catalog_items_cache:
-            catalog_item = CatalogItem.query.get(item_id)
+        if lot_id not in catalog_items_cache:
+            catalog_item = CatalogItem.query.filter_by(lot_id=lot_id).first()
             if not catalog_item:
                 return jsonify({'error': f'Item with id {item_id} не найден'}), 404
-            catalog_items_cache[item_id] = catalog_item
+            catalog_items_cache[lot_id] = catalog_item
         else:
-            catalog_item = catalog_items_cache[item_id]
+            catalog_item = catalog_items_cache[lot_id]
 
         price_per_unit = getattr(catalog_item, 'price', 0)
         total_price = price_per_unit * quantity_requested
 
         order_details_for_pdf.append({
             'description': getattr(catalog_item, 'description', ''),
+            'item_no':getattr(catalog_item, 'item_no', ''), 
             'url': getattr(catalog_item, 'url', ''),
             'quantity_in_order': quantity_requested,
             'unit_price': price_per_unit,
@@ -414,7 +420,7 @@ def send_order_email(order, order_details, pdf_bytes):
             quantity_in_order = item.get('quantity_in_order', '')
             unit_price = item.get('unit_price', 0)
             total_price_item = item.get('total_price', 0)
-            id_ = item.get('id', '')
+            id_ = item.get('item_no', '')
             color_ = item.get('color', '')
             remarks_ = item.get('remarks', '')
 
@@ -509,16 +515,18 @@ def submit_cart():
     catalog_items_cache = {}
 
     # Предварительно собираем все уникальные id товаров
-    item_ids = {item['id'] for item in items_data if 'id' in item}
+    item_ids = {item['lot_id'] for item in items_data if 'lot_id' in item}
     
     # Получаем все товары за один запрос
-    catalog_items = CatalogItem.query.filter(CatalogItem.id.in_(item_ids)).all()
+    catalog_items = CatalogItem.query.filter(CatalogItem.lot_id.in_(item_ids)).all()
     for catalog_item in catalog_items:
-        catalog_items_cache[catalog_item.id] = catalog_item
+        catalog_items_cache[catalog_item.lot_id] = catalog_item
 
     # Обработка каждого элемента заказа
     for item in items_data:
-        item_id = item.get('id')
+        item_id = item.get('item_no')
+        lot_id = item.get('lot_id')
+        description = item.get('description')
         if not item_id:
             return jsonify({'error': 'Item id is missing'}), 400
 
@@ -526,9 +534,9 @@ def submit_cart():
         if not isinstance(quantity_requested, int) or quantity_requested <= 0:
             return jsonify({'error': 'Invalid quantity'}), 400
 
-        catalog_item = catalog_items_cache.get(item_id)
+        catalog_item = catalog_items_cache.get(lot_id)
         if not catalog_item:
-            return jsonify({'error': f'Товар с id {item_id} не найден в каталоге. Пожалуйста, очистите корзину и добавьте товары заново.'}), 409
+            return jsonify({'error': f'Товар с номером детали {item_id}, название {description} не найден в каталоге. Пожалуйста, очистите корзину и добавьте товары заново либо исключите данный товар из вашей корзины.'}), 409
 
         if catalog_item.quantity < quantity_requested:
             return jsonify({
@@ -544,7 +552,7 @@ def submit_cart():
             'url': catalog_item.url,
             'remarks': catalog_item.remarks,
             'color': catalog_item.color,
-            'id': catalog_item.lot_id,
+            'item_no': catalog_item.item_no,
             'quantity_in_order': quantity_requested,
             'unit_price': price_per_unit,
             'total_price': price_per_unit * quantity_requested
@@ -574,9 +582,10 @@ def submit_cart():
         db.session.flush()  # чтобы получить order.id
 
         for item in items_data:
-            item_id = item['id']
+            item_id = item['item_no']
+            lot_id = item['lot_id']
             quantity_requested = item.get('quantity', 1)
-            catalog_item = catalog_items_cache[item_id]
+            catalog_item = catalog_items_cache[lot_id]
 
             order_item = OrderItem(
                 order=order,
@@ -585,7 +594,7 @@ def submit_cart():
             )
             db.session.add(order_item)
 
-            logging.info(f"Обновление товара {catalog_item.id}: {catalog_item.quantity} -> {catalog_item.quantity - quantity_requested}")
+            logging.info(f"Обновление товара {catalog_item.item_no}: {catalog_item.quantity} -> {catalog_item.quantity - quantity_requested}")
             catalog_item.quantity -= quantity_requested
 
         db.session.commit()  # фиксируем изменения до отправки письма
@@ -663,16 +672,16 @@ def submit_cart():
 import xml.etree.ElementTree as ET
 import tempfile
 
-def determine_item_type(item_id):
-    catalog_item = CatalogItem.query.filter_by(id=item_id).first()
+def determine_item_type(lot_id):
+    catalog_item = CatalogItem.query.filter_by(lot_id=lot_id).first()
     if not catalog_item:
         # можно залогировать предупреждение и вернуть дефолт
-        app.logger.warning(f"CatalogItem с item_no={id} не найден")
+        app.logger.warning(f"CatalogItem не найден")
         return 'P'  # или другой подходящий дефолтный тип
     
     category = Category.query.filter_by(id=catalog_item.category_id).first()
     if not category or not category.name:
-        app.logger.warning(f"Category для item_no={id} не найдена")
+        app.logger.warning(f"Category не найдена")
         return 'P'
 
     category_name_lower = category.name.lower()
@@ -697,17 +706,17 @@ def create_inventory_xml(items_data, color_dict):
         item_elem = ET.SubElement(INVENTORY, 'ITEM')
         
         # Получаем id из входных данных
-        item_id = item.get('id')
+        item_id = item.get('lot_id')
+        it_id = item.get('item_no')
         if not item_id:
-            app.logger.warning("В элементе items_data отсутствует 'id', пропускаю")
-            print("items_data:", items_data)
+            app.logger.warning("В элементе items_data отсутствует 'lot_id', пропускаю")
             app.logger.info(f"items_data: {items_data}")
             continue
         
         # Получаем объект из базы по id
-        catalog_item = CatalogItem.query.filter_by(id=item_id).first()
+        catalog_item = CatalogItem.query.filter_by(lot_id=item_id).first()
         if not catalog_item:
-            app.logger.warning(f"CatalogItem с id={item_id} не найден, пропускаю")
+            app.logger.warning(f"CatalogItem с id={it_id} не найден, пропускаю")
             continue
         
         # Определяем тип (по item_no из базы)
