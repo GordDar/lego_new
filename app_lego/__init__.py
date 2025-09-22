@@ -1561,49 +1561,49 @@ def process_db_add(file_name: str, task_id: str):
             
         
                
-        old_id_task_id = str(uuid.uuid4())
-        create_task_status(task_id=old_id_task_id, status='pending', message='Обновление old_id')
+        # old_id_task_id = str(uuid.uuid4())
+        # create_task_status(task_id=old_id_task_id, status='pending', message='Обновление old_id')
 
-        try:
-            catalog_items = CatalogItem.query.all()
+        # try:
+        #     catalog_items = CatalogItem.query.all()
 
-            # Создаёте set всех item_no
-            item_no_set = {item.item_no for item in catalog_items}
-            logging.info(f"{item_no_set}")
+        #     # Создаёте set всех item_no
+        #     item_no_set = {item.item_no for item in catalog_items}
+        #     logging.info(f"{item_no_set}")
 
-            for item_no in item_no_set:
-                # Проверка, есть ли уже запись в базе
-                existing_record = MoreId.query.filter_by(ids=item_no).first()
-                if existing_record:
-                    print(f"Для item_no={item_no} запись уже есть, пропускаем.")
-                    continue
+        #     for item_no in item_no_set:
+        #         # Проверка, есть ли уже запись в базе
+        #         existing_record = MoreId.query.filter_by(ids=item_no).first()
+        #         if existing_record:
+        #             print(f"Для item_no={item_no} запись уже есть, пропускаем.")
+        #             continue
 
-                # Проверка наличия old_id
-                more_old_id = get_old_id_for_item(item_no)
+        #         # Проверка наличия old_id
+        #         more_old_id = get_old_id_for_item(item_no)
 
-                if more_old_id:
-                    single_id_results = [val.strip() for val in more_old_id.split(',')]
-                    for val in single_id_results:
-                        pair_record = MoreId(
-                            ids=item_no,
-                            old_id=val
-                        )
-                        db.session.add(pair_record)
-                else:
-                    logging.info(f"у lot_id - {item_no} нет альтернативного номера")
-                    pair_record = MoreId(
-                        ids=item_no,
-                        old_id='None'
-                    )
-                    db.session.add(pair_record)
+        #         if more_old_id:
+        #             single_id_results = [val.strip() for val in more_old_id.split(',')]
+        #             for val in single_id_results:
+        #                 pair_record = MoreId(
+        #                     ids=item_no,
+        #                     old_id=val
+        #                 )
+        #                 db.session.add(pair_record)
+        #         else:
+        #             logging.info(f"у lot_id - {item_no} нет альтернативного номера")
+        #             pair_record = MoreId(
+        #                 ids=item_no,
+        #                 old_id='None'
+        #             )
+        #             db.session.add(pair_record)
 
-            db.session.commit()
-            logging.info("Обновление old_id завершено")
-            update_task_status(old_id_task_id, "completed", "Обновление old_id завершено")
-        except Exception as e:
-            update_task_status(old_id_task_id, "error", str(e))
-        else:
-            update_task_status(old_id_task_id, "completed", "Обновление old_id завершено")
+        #     db.session.commit()
+        #     logging.info("Обновление old_id завершено")
+        #     update_task_status(old_id_task_id, "completed", "Обновление old_id завершено")
+        # except Exception as e:
+        #     update_task_status(old_id_task_id, "error", str(e))
+        # else:
+        #     update_task_status(old_id_task_id, "completed", "Обновление old_id завершено")
                             
             
 
