@@ -191,24 +191,56 @@ def get_catalog():
                 'current_page': page
             })
 
+    # query = query.filter(CatalogItem.quantity > 0)
+
+    # if search:
+    #     search_term = f"%{search}%"
+    #     more_id_record = db.session.query(MoreId).filter(MoreId.old_id.ilike(search_term)).all()
+
+    #     if more_id_record:
+    #         ids_str = more_id_record.ids.strip()
+    #         ids_list = [id_part.strip() for id_part in ids_str.split(',')]
+    #         query = query.filter(CatalogItem.item_no.in_(ids_list))
+    #     else:
+    #         query = query.filter(
+    #             or_(
+    #                 CatalogItem.color.ilike(search_term),
+    #                 CatalogItem.description.ilike(search_term),
+    #                 CatalogItem.item_no.ilike(search_term)
+    #             )
+    #         )
+    
     query = query.filter(CatalogItem.quantity > 0)
 
     if search:
         search_term = f"%{search}%"
-        more_id_record = db.session.query(MoreId).filter(MoreId.old_id.ilike(search_term)).first()
 
-        if more_id_record:
-            ids_str = more_id_record.ids.strip()
-            ids_list = [id_part.strip() for id_part in ids_str.split(',')]
-            query = query.filter(CatalogItem.item_no.in_(ids_list))
+        # Поиск в CatalogItem по item_no
+        catalog_matches = query.filter(CatalogItem.item_no.ilike(search_term)).all()
+
+        if catalog_matches:
+            # Есть совпадения в CatalogItem — фильтруем по ним
+            item_nos = [item.item_no for item in catalog_matches]
+            query = query.filter(CatalogItem.item_no.in_(item_nos))
         else:
-            query = query.filter(
-                or_(
-                    CatalogItem.color.ilike(search_term),
-                    CatalogItem.description.ilike(search_term),
-                    CatalogItem.item_no.ilike(search_term)
+            # Совпадений в CatalogItem нет — ищем в MoreId
+            more_id_record = db.session.query(MoreId).filter(MoreId.old_id.ilike(search_term)).first()
+
+            if more_id_record:
+                # Формируем список ids из поля
+                ids_str = more_id_record.ids.strip()
+                ids_list = [id_part.strip() for id_part in ids_str.split(',')]
+                # Фильтруем CatalogItem по item_no из списка ids
+                query = query.filter(CatalogItem.item_no.in_(ids_list))
+            else:
+                # Если ничего не найдено — можем оставить фильтр по другим полям или ничего не делать
+                query = query.filter(
+                    or_(
+                        CatalogItem.color.ilike(search_term),
+                        CatalogItem.description.ilike(search_term),
+                        CatalogItem.item_no.ilike(search_term)
+                    )
                 )
-            )
 
     # Изменённая сортировка:
     query = query.order_by(CatalogItem.item_no.asc(), CatalogItem.color.asc())
@@ -1078,6 +1110,26 @@ def get_category_structure_parts():
 
 
 # --- 7. Просмотр одного заказа из админки ---
+# def get_order_items_list(order):
+#     items_list = []
+#     for item in order.order_items:
+#         catalog_item = item.catalog_item
+#         price_per_unit = catalog_item.price if catalog_item else 0
+#         quantity_in_order = item.quantity
+
+#         items_list.append({
+#             'item_no': catalog_item.item_no,
+#             'url': catalog_item.url,
+#             'color': catalog_item.color,
+#             'description': catalog_item.description,
+#             'quantity_in_order': quantity_in_order,
+#             'unit_price': price_per_unit,
+#             'total_price': quantity_in_order * price_per_unit,
+#             "remarks": catalog_item.remarks,
+#             "quantity": catalog_item.quantity
+#         })
+#     return items_list
+
 def get_order_items_list(order):
     items_list = []
     for item in order.order_items:
@@ -1096,7 +1148,9 @@ def get_order_items_list(order):
             "remarks": catalog_item.remarks,
             "quantity": catalog_item.quantity
         })
-    return items_list
+    # Сортировка по item_no и по color (алфавитно)
+    items_list_sorted = sorted(items_list, key=lambda x: (x['item_no'], x['color'].lower() if x['color'] else ''))
+    return items_list_sorted
 
 
 @app.route('/admin/orders/<int:order_id>', methods=['GET'])
@@ -1374,6 +1428,35 @@ def get_or_create(session: Session, model, defaults=None, commit_required=True, 
 
 # from concurrent.futures import ThreadPoolExecutor
 
+import pandas as pd    
+from io import BytesIO        
+def export_moreid_to_excel():
+    try:
+        items = MoreId.query.all()
+        data = [vars(item) for item in items]
+        for item in data:
+            item.pop('_sa_instance_state', None)
+
+        df = pd.DataFrame(data)
+
+        # Папка для сохранения файлов
+        export_dir = os.path.join(os.path.dirname(__file__), 'exports')
+        os.makedirs(export_dir, exist_ok=True)
+
+        # Путь к файлу
+        file_path = os.path.join(export_dir, 'moreid.xlsx')
+
+        # Сохраняем файл
+        df.to_excel(file_path, index=False)
+
+        # Можно вернуть путь для дальнейшего использования или подтверждения
+        return file_path
+
+    except Exception as e:
+        import logging
+        logging.exception("Ошибка при экспорте в Excel: %s", e)
+        return None
+
 
 def process_db_add(file_name: str, task_id: str):
     with app.app_context():
@@ -1394,6 +1477,7 @@ def process_db_add(file_name: str, task_id: str):
             db.session.query(CatalogItem).delete()
             db.session.query(Category).delete()
             db.session.query(TaskStatus).delete()
+            # db.session.query(MoreId).delete()
             db.session.commit()
             
             update_task_status(
@@ -1559,7 +1643,9 @@ def process_db_add(file_name: str, task_id: str):
             db.session.rollback()
             update_task_status(task_id, status="error", message=str(e))
             
-        
+            
+            
+        # ОБНОВЛЕНИЕ СТАРЫХ ID
                
         # old_id_task_id = str(uuid.uuid4())
         # create_task_status(task_id=old_id_task_id, status='pending', message='Обновление old_id')
@@ -1570,8 +1656,13 @@ def process_db_add(file_name: str, task_id: str):
         #     # Создаёте set всех item_no
         #     item_no_set = {item.item_no for item in catalog_items}
         #     logging.info(f"{item_no_set}")
+        #     total_items = len(item_no_set)
+        #     processed_count = 0
 
+            
         #     for item_no in item_no_set:
+        #         processed_count += 1
+        #         logging.info(f"Обрабатывается item_no: {item_no} ({processed_count}/{total_items})")
         #         # Проверка, есть ли уже запись в базе
         #         existing_record = MoreId.query.filter_by(ids=item_no).first()
         #         if existing_record:
@@ -1580,14 +1671,17 @@ def process_db_add(file_name: str, task_id: str):
 
         #         # Проверка наличия old_id
         #         more_old_id = get_old_id_for_item(item_no)
+        #         all_pairs = []
 
         #         if more_old_id:
+        #             logging.info(f"у lot_id - {item_no} есть альтернативный номер")
         #             single_id_results = [val.strip() for val in more_old_id.split(',')]
         #             for val in single_id_results:
         #                 pair_record = MoreId(
         #                     ids=item_no,
         #                     old_id=val
         #                 )
+        #                 all_pairs.append(pair_record)
         #                 db.session.add(pair_record)
         #         else:
         #             logging.info(f"у lot_id - {item_no} нет альтернативного номера")
@@ -1595,15 +1689,23 @@ def process_db_add(file_name: str, task_id: str):
         #                 ids=item_no,
         #                 old_id='None'
         #             )
+        #             all_pairs.append(pair_record)
         #             db.session.add(pair_record)
+                
 
         #     db.session.commit()
+        #     excel_path = export_moreid_to_excel()
         #     logging.info("Обновление old_id завершено")
         #     update_task_status(old_id_task_id, "completed", "Обновление old_id завершено")
+        #     logging.info(f"Все пары: {all_pairs}")
+        
         # except Exception as e:
         #     update_task_status(old_id_task_id, "error", str(e))
         # else:
         #     update_task_status(old_id_task_id, "completed", "Обновление old_id завершено")
+            
+
+            
                             
             
 
@@ -1847,6 +1949,36 @@ def delete_old_id():
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
+   
+    
+# --- 16. Чтение и запись данных из таблицы MoreId в базу данных (СТАРЫЕ id) ---    
+def import_old_id_from_excel():
+    try:
+        # Чтение файла Excel. Укажите правильный путь к файлу.
+        df = pd.read_excel('app_lego\exports\moreid.xlsx')  # замените на актуальный путь
+
+        # Проверка наличия нужных колонок
+        required_columns = {'id', 'ids', 'old_id'}
+        if not required_columns.issubset(df.columns):
+            raise ValueError(f"Excel файл должен содержать колонки: {required_columns}")
+
+        # Обновляем таблицу: очищаем старые данные (опционально)
+        # db.session.query(MoreId).delete()
+
+        # Или компактно вставляем новые записи:
+        for index, row in df.iterrows():
+            new_record = MoreId(
+                id=int(row['id']) if not pd.isna(row['id']) else None,
+                ids=str(row['ids']) if not pd.isna(row['ids']) else None,
+                old_id=str(row['old_id']) if not pd.isna(row['old_id']) else None
+            )
+            db.session.add(new_record)
+
+        db.session.commit()
+        print("Данные успешно импортированы из Excel")
+    except Exception as e:
+        db.session.rollback()
+        print(f"Ошибка при импорте: {e}")
 
 
 

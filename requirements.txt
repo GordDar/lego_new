@@ -15,3 +15,5 @@ flask-migrate
 fpdf2
 reportlab
 weasyprint
+pandas
+XlsxWriter
