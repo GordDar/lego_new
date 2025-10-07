@@ -17,30 +17,22 @@ RUN apt-get update && apt-get install -y \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# Устанавливаем chromedriver в путь
 ENV CHROMEDRIVER_PATH=/usr/lib/chromium/chromedriver
 ENV PATH="${CHROMEDRIVER_PATH}:${PATH}"
+ENV FLASK_APP="app_lego:app"
 
 WORKDIR /app
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-RUN pip install selenium
-
-
-
+RUN pip install gunicorn
 
 COPY . .
 
 COPY entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh
 
-ENV FLASK_APP=run.py
-ENV FLASK_RUN_HOST=0.0.0.0
-ENV FLASK_ENV=production
-
 EXPOSE 8080
 
-# Используем entrypoint
-# ENTRYPOINT ["/app/entrypoint.sh"]
-CMD ["python", "-m", "flask", "run", "--port=8080"]
+ENTRYPOINT ["/app/entrypoint.sh"]
+#CMD ["python", "-m", "flask", "run", "--port=8080"]
