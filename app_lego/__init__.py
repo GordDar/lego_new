@@ -1292,7 +1292,7 @@ def create_driver():
 
 def get_old_id_for_item(item_no, max_retries=2):
     url = f'https://www.bricklink.com/v2/catalog/catalogitem.page?P={item_no}'
-    # url = f'http://34.160.149.248/v2/catalog/catalogitem.page?P={item_no}'
+    # url = f'https://mybriks.ru/proxy_image/v2/catalog/catalogitem.page?P={item_no}'
     attempt = 0
 
     while attempt < max_retries:
@@ -1549,15 +1549,15 @@ def process_db_add(file_name: str, task_id: str):
                 color_number = color_dict.get(color_name, "0")
 
                 if category_name.startswith("Instructions"):
-                    image_url = f"http://34.160.149.248/ItemImage/IN/{color_number}/{item_no}.png"
+                    image_url = f"https://mybriks.ru/proxy_image/ItemImage/IN/{color_number}/{item_no}.png"
                 elif category_name.startswith("Minifigures"):
-                    image_url = f"http://34.160.149.248/ItemImage/MN/{color_number}/{item_no}.png"
+                    image_url = f"https://mybriks.ru/proxy_image/ItemImage/MN/{color_number}/{item_no}.png"
                 elif category_name.startswith("Gear"):
-                    image_url = f"http://34.160.149.248/ItemImage/GN/{color_number}/{item_no}.png"
+                    image_url = f"https://mybriks.ru/proxy_image/ItemImage/GN/{color_number}/{item_no}.png"
                 elif category_name.startswith("Sets"):
-                    image_url = f"http://34.160.149.248/ItemImage/SN/{color_number}/{item_no}.png"
+                    image_url = f"https://mybriks.ru/proxy_image/ItemImage/SN/{color_number}/{item_no}.png"
                 else:
-                    image_url = f"http://34.160.149.248/ItemImage/PN/{color_number}/{item_no}.png"
+                    image_url = f"https://mybriks.ru/proxy_image/ItemImage/PN/{color_number}/{item_no}.png"
 
 
                 images_batch.append(
