@@ -1,0 +1,39 @@
+version: '3.9'
+
+services:
+  web:
+    image: europe-central2-docker.pkg.dev/lego-bricks-app/backend-app/lego-bricks:latest
+    container_name: flask_app
+    restart: always
+    ports:
+      - "8080:8080"
+    environment:
+      GOOGLE_APPLICATION_CREDENTIALS: "/app/google-account.json"
+      SECRET_TOKEN: "abcdefg12345678"
+    depends_on:
+      - db
+    networks:
+      - app-net
+    volumes:
+      - /home/ubuntu/google-account.json:/app/google-account.json:ro
+
+  db:
+    image: postgres:14
+    container_name: postgres_db
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: mydb
+#    ports:
+#      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data  # Данные сохраняются между перезапусками
+    networks:
+      - app-net
+
+volumes:
+  pgdata:
+
+networks:
+  app-net:
