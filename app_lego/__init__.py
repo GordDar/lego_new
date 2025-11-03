@@ -241,6 +241,7 @@ def get_catalog():
                         CatalogItem.item_no.ilike(search_term)
                     )
                 )
+    
 
     # Изменённая сортировка:
     query = query.order_by(CatalogItem.item_no.asc(), CatalogItem.color.asc())
