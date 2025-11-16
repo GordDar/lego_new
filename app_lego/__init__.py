@@ -1855,6 +1855,80 @@ def presigned_url():
 @app.route('/wanted_list', methods=['POST'])
 
 
+# # --- 13. Загрузка wanted_list ---
+# def parse_xml_from_gcs():
+#     data = request.get_json()
+#     file_name = data.get('file_name')
+#     try:
+#         bucket = storage_client.bucket(BUCKET_NAME)
+#         blob = bucket.blob(file_name)
+
+#         if not blob.exists():
+#             print(f"Файл {file_name} не найден в бакете {BUCKET_NAME}.")
+#             return {'error_message': f"blob {file_name} was not found in the bucket"}
+
+#         xml_bytes = blob.download_as_bytes()
+#         xml_content = xml_bytes.decode('utf-8')
+#         soup = BeautifulSoup(xml_content, 'xml')
+#         items = soup.find_all('ITEM')
+
+#         found_items = []
+#         not_found_items = []
+#         for item in items:
+#             item_id_elem = item.find('ITEMID')
+#             color_elem = item.find('COLOR')
+#             minqty_elem = item.find('MINQTY')  # Поиск элемента MINQTY
+
+#             item_id_text = item_id_elem.text if item_id_elem else None
+#             color_value = color_elem.text if color_elem else None
+#             min_qty_value = minqty_elem.text if minqty_elem else None
+
+#             if not item_id_text:
+#                 not_found_items.append(None)
+#                 print("ITEMID отсутствует, элемент пропущен")
+#                 continue
+
+#             color_key = None
+#             for key, value in color_dict.items():
+#                 if value == color_value:
+#                     color_key = key
+#                     break
+
+#             query = CatalogItem.query.filter_by(item_no=item_id_text)
+#             if color_key:
+#                 query = query.filter_by(color=color_key)
+
+#             existing_item = query.first()
+
+#             if existing_item:
+#                 found_items.append({
+#                     'id': existing_item.id,
+#                     'item_no': existing_item.item_no,
+#                     'url': existing_item.url,
+#                     'color': existing_item.color,
+#                     'description': existing_item.description,
+#                     'price': existing_item.price,
+#                     'quantity': existing_item.quantity,
+#                     'category_name': existing_item.category.name if existing_item.category else None,
+#                     'remarks': existing_item.remarks
+#                 })
+#                 print(f"Найден товар: {existing_item}")            
+#             else:
+#                 not_found_items.append(item_id_text)
+#                 print(f"Товар с ITEMID={item_id_text} не найден в базе.")
+
+#         return {
+#             'found_items': found_items,
+#             'not_found_items': not_found_items
+#         }
+#     except Exception as e:
+#         print(f"Ошибка при получении файла из GCS: {e}")
+#         return {
+#             'error_message': f'{e}'
+#         }, 400
+        
+        
+        
 # --- 13. Загрузка wanted_list ---
 def parse_xml_from_gcs():
     data = request.get_json()
@@ -1874,30 +1948,55 @@ def parse_xml_from_gcs():
 
         found_items = []
         not_found_items = []
+
         for item in items:
             item_id_elem = item.find('ITEMID')
             color_elem = item.find('COLOR')
+            minqty_elem = item.find('MINQTY')  # Поиск MINQTY
+
             item_id_text = item_id_elem.text if item_id_elem else None
             color_value = color_elem.text if color_elem else None
+            min_qty_value = minqty_elem.text if minqty_elem else None
+
+            # Преобразуем min_qty_value в число, если есть
+            min_qty = None
+            if min_qty_value:
+                try:
+                    min_qty = float(min_qty_value)
+                except ValueError:
+                    print(f"Неверный формат MINQTY: {min_qty_value}")
+                    min_qty = None
 
             if not item_id_text:
                 not_found_items.append(None)
                 print("ITEMID отсутствует, элемент пропущен")
                 continue
 
+            # Поиск по item_id_text
+            query = CatalogItem.query.filter_by(item_no=item_id_text)
+
+            # Поиск по color_key
             color_key = None
             for key, value in color_dict.items():
                 if value == color_value:
                     color_key = key
                     break
-
-            query = CatalogItem.query.filter_by(item_no=item_id_text)
             if color_key:
                 query = query.filter_by(color=color_key)
 
             existing_item = query.first()
 
             if existing_item:
+                # Проверка количества
+                item_quantity = existing_item.quantity
+                # Сравнение количества с min_qty
+                warning_message = None
+                if min_qty is not None:
+                    if item_quantity < min_qty:
+                        warning_message = (
+                            f"Внимание: запас товара ({item_quantity}) меньше запланированного минимума ({min_qty})."
+                        )
+                # Добавляем информацию о согласии или предупреждении
                 found_items.append({
                     'id': existing_item.id,
                     'item_no': existing_item.item_no,
@@ -1907,9 +2006,11 @@ def parse_xml_from_gcs():
                     'price': existing_item.price,
                     'quantity': existing_item.quantity,
                     'category_name': existing_item.category.name if existing_item.category else None,
-                    'remarks': existing_item.remarks
+                    'remarks': existing_item.remarks,
+                    'min_qty': min_qty_value,
+                    'warning': warning_message  # Добавляем предупреждение при необходимости
                 })
-                print(f"Найден товар: {existing_item}")            
+                print(f"Найден товар: {existing_item}")
             else:
                 not_found_items.append(item_id_text)
                 print(f"Товар с ITEMID={item_id_text} не найден в базе.")
