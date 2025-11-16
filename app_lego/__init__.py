@@ -152,8 +152,6 @@ color_dict = {
 
 
 
-
-
 # --- 1. Каталог (GET /catalog) ---
 from sqlalchemy import or_
 
@@ -162,7 +160,8 @@ def get_catalog():
     search = request.args.get('search', '', type=str)
     search_category = request.args.get('category', '', type=str)
     page = request.args.get('page', 1, type=int)
-    per_page = request.args.get('per_page', 30, type=int)
+    per_page = request.args.get('per_page', 25, type=int)
+    sort_order = request.args.get('sort_order', '', type=str)
     
     query = CatalogItem.query.join(Category, CatalogItem.category_id == Category.id)
         # .filter(Category.name.ilike("%Parts%"))
@@ -244,7 +243,12 @@ def get_catalog():
     
 
     # Изменённая сортировка:
-    query = query.order_by(CatalogItem.item_no.asc(), CatalogItem.color.asc())
+    if sort_order == 'price':
+        query = query.order_by(CatalogItem.price.asc(), CatalogItem.item_no.asc())
+    elif sort_order == 'quantity':
+        query = query.order_by(CatalogItem.quantity.asc(), CatalogItem.item_no.asc())
+    else:
+        query = query.order_by(CatalogItem.item_no.asc(), CatalogItem.color.asc())
 
     pagination = query.paginate(page=page, per_page=per_page, error_out=False)
     
