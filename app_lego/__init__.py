@@ -1652,62 +1652,62 @@ def process_db_add(file_name: str, task_id: str):
             
         # ОБНОВЛЕНИЕ СТАРЫХ ID
                
-        # old_id_task_id = str(uuid.uuid4())
-        # create_task_status(task_id=old_id_task_id, status='pending', message='Обновление old_id')
+        old_id_task_id = str(uuid.uuid4())
+        create_task_status(task_id=old_id_task_id, status='pending', message='Обновление old_id')
 
-        # try:
-        #     catalog_items = CatalogItem.query.all()
+        try:
+            catalog_items = CatalogItem.query.all()
 
-        #     # Создаёте set всех item_no
-        #     item_no_set = {item.item_no for item in catalog_items}
-        #     logging.info(f"{item_no_set}")
-        #     total_items = len(item_no_set)
-        #     processed_count = 0
+            # Создаёте set всех item_no
+            item_no_set = {item.item_no for item in catalog_items}
+            logging.info(f"{item_no_set}")
+            total_items = len(item_no_set)
+            processed_count = 0
 
             
-        #     for item_no in item_no_set:
-        #         processed_count += 1
-        #         logging.info(f"Обрабатывается item_no: {item_no} ({processed_count}/{total_items})")
-        #         # Проверка, есть ли уже запись в базе
-        #         existing_record = MoreId.query.filter_by(ids=item_no).first()
-        #         if existing_record:
-        #             print(f"Для item_no={item_no} запись уже есть, пропускаем.")
-        #             continue
+            for item_no in item_no_set:
+                processed_count += 1
+                logging.info(f"Обрабатывается item_no: {item_no} ({processed_count}/{total_items})")
+                # Проверка, есть ли уже запись в базе
+                existing_record = MoreId.query.filter_by(ids=item_no).first()
+                if existing_record:
+                    print(f"Для item_no={item_no} запись уже есть, пропускаем.")
+                    continue
 
-        #         # Проверка наличия old_id
-        #         more_old_id = get_old_id_for_item(item_no)
-        #         all_pairs = []
+                # Проверка наличия old_id
+                more_old_id = get_old_id_for_item(item_no)
+                all_pairs = []
 
-        #         if more_old_id:
-        #             logging.info(f"у lot_id - {item_no} есть альтернативный номер")
-        #             single_id_results = [val.strip() for val in more_old_id.split(',')]
-        #             for val in single_id_results:
-        #                 pair_record = MoreId(
-        #                     ids=item_no,
-        #                     old_id=val
-        #                 )
-        #                 all_pairs.append(pair_record)
-        #                 db.session.add(pair_record)
-        #         else:
-        #             logging.info(f"у lot_id - {item_no} нет альтернативного номера")
-        #             pair_record = MoreId(
-        #                 ids=item_no,
-        #                 old_id='None'
-        #             )
-        #             all_pairs.append(pair_record)
-        #             db.session.add(pair_record)
+                if more_old_id:
+                    logging.info(f"у lot_id - {item_no} есть альтернативный номер")
+                    single_id_results = [val.strip() for val in more_old_id.split(',')]
+                    for val in single_id_results:
+                        pair_record = MoreId(
+                            ids=item_no,
+                            old_id=val
+                        )
+                        all_pairs.append(pair_record)
+                        db.session.add(pair_record)
+                else:
+                    logging.info(f"у lot_id - {item_no} нет альтернативного номера")
+                    pair_record = MoreId(
+                        ids=item_no,
+                        old_id='None'
+                    )
+                    all_pairs.append(pair_record)
+                    db.session.add(pair_record)
                 
 
-        #     db.session.commit()
-        #     excel_path = export_moreid_to_excel()
-        #     logging.info("Обновление old_id завершено")
-        #     update_task_status(old_id_task_id, "completed", "Обновление old_id завершено")
-        #     logging.info(f"Все пары: {all_pairs}")
+            db.session.commit()
+            excel_path = export_moreid_to_excel()
+            logging.info("Обновление old_id завершено")
+            update_task_status(old_id_task_id, "completed", "Обновление old_id завершено")
+            logging.info(f"Все пары: {all_pairs}")
         
-        # except Exception as e:
-        #     update_task_status(old_id_task_id, "error", str(e))
-        # else:
-        #     update_task_status(old_id_task_id, "completed", "Обновление old_id завершено")
+        except Exception as e:
+            update_task_status(old_id_task_id, "error", str(e))
+        else:
+            update_task_status(old_id_task_id, "completed", "Обновление old_id завершено")
             
 
             
@@ -1966,7 +1966,7 @@ def parse_xml_from_gcs():
             min_qty = None
             if min_qty_value:
                 try:
-                    min_qty = float(min_qty_value)
+                    min_qty = int(min_qty_value)
                 except ValueError:
                     print(f"Неверный формат MINQTY: {min_qty_value}")
                     min_qty = None
@@ -2011,7 +2011,7 @@ def parse_xml_from_gcs():
                     'quantity': existing_item.quantity,
                     'category_name': existing_item.category.name if existing_item.category else None,
                     'remarks': existing_item.remarks,
-                    'min_qty': min_qty_value,
+                    'min_qty': min_qty,
                     'warning': warning_message  # Добавляем предупреждение при необходимости
                 })
                 print(f"Найден товар: {existing_item}")
