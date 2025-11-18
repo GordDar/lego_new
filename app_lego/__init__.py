@@ -255,6 +255,7 @@ def get_catalog():
     items = [{
             'id': item.id,
             'item_no': item.item_no,
+            'old_id': [more_id_record.old_id for more_id_record in MoreId.query.filter(MoreId.ids == item.item_no).all()],
             'url': item.url or 'https://storage.googleapis.com/lego-bricks-app-frontend/default.jpg',
             'color': item.color,
             'lot_id': item.lot_id,
@@ -1664,7 +1665,7 @@ def process_db_add(file_name: str, task_id: str):
             total_items = len(item_no_set)
             processed_count = 0
 
-            
+
             for item_no in item_no_set:
                 processed_count += 1
                 logging.info(f"Обрабатывается item_no: {item_no} ({processed_count}/{total_items})")
@@ -1696,24 +1697,17 @@ def process_db_add(file_name: str, task_id: str):
                     )
                     all_pairs.append(pair_record)
                     db.session.add(pair_record)
-                
 
             db.session.commit()
-            excel_path = export_moreid_to_excel()
             logging.info("Обновление old_id завершено")
             update_task_status(old_id_task_id, "completed", "Обновление old_id завершено")
             logging.info(f"Все пары: {all_pairs}")
-        
+
         except Exception as e:
             update_task_status(old_id_task_id, "error", str(e))
         else:
             update_task_status(old_id_task_id, "completed", "Обновление old_id завершено")
             
-
-            
-                            
-            
-
 
 @app.route("/db_add", methods=["POST"])
 def db_add():
@@ -2011,7 +2005,7 @@ def parse_xml_from_gcs():
                     'quantity': existing_item.quantity,
                     'category_name': existing_item.category.name if existing_item.category else None,
                     'remarks': existing_item.remarks,
-                    'min_qty': min_qty,
+                    'min_qty': min_qty_value,
                     'warning': warning_message  # Добавляем предупреждение при необходимости
                 })
                 print(f"Найден товар: {existing_item}")
@@ -2057,11 +2051,12 @@ def delete_old_id():
         return jsonify({"error": str(e)}), 500
    
     
-# --- 16. Чтение и запись данных из таблицы MoreId в базу данных (СТАРЫЕ id) ---    
+# --- 16. Чтение и запись данных из таблицы MoreId в базу данных (СТАРЫЕ id) ---
+@app.route('/import_old_id_from_excel', methods=['POST'])
 def import_old_id_from_excel():
     try:
         # Чтение файла Excel. Укажите правильный путь к файлу.
-        df = pd.read_excel('app_lego\exports\moreid.xlsx')  # замените на актуальный путь
+        df = pd.read_excel('/app/app_lego/exports/moreid.xlsx')  # замените на актуальный путь
 
         # Проверка наличия нужных колонок
         required_columns = {'id', 'ids', 'old_id'}
@@ -2082,13 +2077,11 @@ def import_old_id_from_excel():
 
         db.session.commit()
         print("Данные успешно импортированы из Excel")
+        return "", 200
     except Exception as e:
         db.session.rollback()
         print(f"Ошибка при импорте: {e}")
-
-
-
-
+        return f"{e}", 400
 
 
 # --- Запуск приложения ---

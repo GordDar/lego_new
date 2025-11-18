@@ -17,3 +17,4 @@ reportlab
 weasyprint
 pandas
 XlsxWriter
+openpyxl
