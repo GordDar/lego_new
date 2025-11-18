@@ -2005,7 +2005,7 @@ def parse_xml_from_gcs():
                     'quantity': existing_item.quantity,
                     'category_name': existing_item.category.name if existing_item.category else None,
                     'remarks': existing_item.remarks,
-                    'min_qty': min_qty_value,
+                    'min_qty': min_qty,
                     'warning': warning_message  # Добавляем предупреждение при необходимости
                 })
                 print(f"Найден товар: {existing_item}")
