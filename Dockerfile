@@ -35,4 +35,4 @@ RUN chmod +x /app/entrypoint.sh
 EXPOSE 8080
 
 ENTRYPOINT ["/app/entrypoint.sh"]
-#CMD ["python", "-m", "flask", "run", "--port=8080"]
+# CMD ["python", "-m", "flask", "run", "--port=8080"]
