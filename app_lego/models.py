@@ -158,3 +158,12 @@ class MoreId(db.Model):
     ids = db.Column(db.String(30))
     old_id = db.Column(db.String(30))
 
+
+class AlternativeId(db.Model):
+    __tablename__ = 'alternativeid' 
+
+    id = db.Column(db.Integer, primary_key=True)
+    item_no = db.Column(db.String, nullable=True)
+    color = db.Column(db.String, nullable=True) 
+    color_key = db.Column(db.Integer, nullable=True)
+    alternative_id = db.Column(db.Integer, nullable=True)

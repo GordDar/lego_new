@@ -45,7 +45,7 @@ storage_client = storage.Client()  # Предполагается, что нас
 BUCKET_NAME = 'bucket-wanted-lists_lego-bricks-app'
 
 
-from app_lego.models import Order, CatalogItem, Category, AdminUser, Settings, OrderItem, Images, MoreId, TaskStatus
+from app_lego.models import Order, CatalogItem, Category, AdminUser, Settings, OrderItem, Images, MoreId, TaskStatus, AlternativeId
 
 
 def token_required(f):
@@ -76,8 +76,11 @@ color_dict = {
     'Bright Light Yellow': '103',
     'Bright Pink': '104',
     'Brown': '8',
+    'Chrome Gold': '21',
+    'Chrome Green': '64',
     'Chrome Silver': '22',
     'Coral': '220',
+    'Copper': '84',
     'Dark Azure': '153',
     'Dark Blue': '63',
     'Dark Bluish Gray': '85',
@@ -95,6 +98,7 @@ color_dict = {
     'Glitter Trans-Clear': '101',
     'Glitter Trans-Light Blue': '162',
     'Glitter Trans-Purple': '102',
+    'Glow In Dark White': '159',
     'Green': '6',
     'Lavender': '154',
     'Light Aqua': '152',
@@ -102,6 +106,8 @@ color_dict = {
     'Light Brown': '91',
     'Light Gray': '9',
     'Light Nougat': '90',
+    'Light Purple': '93',
+    'Lilac': '245',
     'Lime': '34',
     'Maersk Blue': '72',
     'Magenta': '71',
@@ -110,21 +116,32 @@ color_dict = {
     'Medium Lavender': '157',
     'Medium Nougat': '150',
     'Medium Orange': '31',
+    'Medium Violet': '73',
     'Metallic Copper': '250',
     'Metallic Gold': '65',
+    'Metallic Green': '70',
     'Metallic Silver': '67',
+    'Neon Yellow': '236',
     'Nougat': '28',
     'Olive Green': '155',
     'Orange': '4',
     'Pearl Dark Gray': '77',
     'Pearl Gold': '115',
+    'Pearl Light Gold': '61',
     'Pearl Light Gray': '66',
+    'Pink': '23',
+    'Purple': '24',
     'Red': '5',
     'Reddish Brown': '88',
     'Reddish Copper': '249',
+    'Reddish Orange': '',
     'Sand Blue': '55',
     'Sand Green': '48',
+    'Sand Red': '58',
+    'Satin Trans-Dark Pink': '224',
     'Satin Trans-Light Blue': '229',
+    'Satin Trans-Purple': '230',
+    'Sky Blue': '87',
     'Tan': '2',
     'Trans-Black': '251',
     'Trans-Bright Green': '108',
@@ -143,10 +160,86 @@ color_dict = {
     'Trans-Red': '17',
     'Trans-Yellow': '19',
     'Very Light Bluish Gray': '99',
+    'Violet': '43',
     'White': '1',
     'Yellow': '3',
     'Yellowish Green': '158',
-    'n/a': '0'
+    'n/a': '0',
+    "Blue-Violet": '97',
+    "Sand Purple": '54',
+    "Medium Brown": '240',
+    "Umber": '168',
+    "Medium Tan": '241',
+    "Satin Trans-Bright Green": '233',
+    "Light Turquoise": '40',
+    "Fabuland Orange": '160',
+    "Rose Pink": '56',
+    "Light Green": '38',
+    "Earth Orange": '29',
+    "Pearl Very Light Gray": '119',
+    "Dark Salmon": '231',
+    "Light Yellow": '33',
+    "Very Light Gray": '49',
+    "Light Orange": '32',
+    "Medium Green": '37',
+    "Very Light Orange": '96',
+    "Warm Yellowish Orange": '172',
+    "Glow In Dark Opaque": '46',
+    "Medium Lime": '76',
+    "Satin Trans-Brown": '229',
+    "Aqua": '41',
+    "Light Violet": '44',
+    "Light Lime": '35',
+    "Speckle Black-Copper": '116',
+    "Speckle Black-Silver": '111',
+    "Glow In Dark Trans": '118',
+    "Satin Trans-Clear": '228',
+    "Light Salmon": '26',
+    "Glitter Trans-Dark Pink": '100',
+    "Light Blue": '62',
+    "Milky White": '60',
+    "Salmon": '25',
+    "Dark Nougat": '225',
+    "Dark Yellow": '161',
+    "Dark Blue-Violet": '109',
+    "(Not Applicable)": '0',
+    "Satin Trans-Dark Blue": '232',
+    "Light Lilac": '246',
+    "Trans-Light Bright Green": '226',
+    "Trans-Aqua": '113',
+    "Fabuland Brown": '106',
+    "Fabuland Lime": '248',
+    "Medium Dark Pink": '94',
+    "Lemon": '171',
+    "Chrome Antique Brass": '57',
+    "Chrome Blue": '52',
+    "Trans-Pink": '107',
+    "Pearl Sand Blue": '78',
+    "Pearl Blue": '254',
+    "Pearl Brown": '255',
+    "Pearl Green": '253',
+    "Pearl Red": '252',
+    "Pearl White": '83',
+    "Pearl Black": '244',
+    "Little Robots Blue": '247',
+    "Trans-Medium Purple": '234',
+    "Clikits Lavender": '227',
+    "Trans-Light Green": '221',
+    "Trans-Light Orange": '164',
+    "Glitter Trans-Neon Green": '163',
+    "Bionicle Gold": '238',
+    "Bionicle Silver": '239',
+    "Bionicle Copper": '237',
+    "Reddish Gold": '235',
+    "Ochre Yellow": '173',
+    "Sienna": '169',
+    "Chrome Pink": '82',
+    "Rust": '27',
+    "Speckle DBGray-Silver": '117',
+    "Speckle Black-Gold": '151',
+    "Trans-Neon Yellow": '121',
+    'Satin Trans-Yellow': '170',
+    'Glitter Trans-Orange': '222'
 }
 
 
@@ -222,25 +315,33 @@ def get_catalog():
             item_nos = [item.item_no for item in catalog_matches]
             query = query.filter(CatalogItem.item_no.in_(item_nos))
         else:
-            # Совпадений в CatalogItem нет — ищем в MoreId
-            more_id_record = db.session.query(MoreId).filter(MoreId.old_id.ilike(search_term)).first()
-
-            if more_id_record:
+            alternative_id_record = db.session.query(AlternativeId).filter(AlternativeId.alternative_id.ilike(search_term)).first()
+            if alternative_id_record:
                 # Формируем список ids из поля
-                ids_str = more_id_record.ids.strip()
-                ids_list = [id_part.strip() for id_part in ids_str.split(',')]
+                alternative_id_str = alternative_id_record.alternative_id.strip()
+                alternative_id_list = [alternative_id_part.strip() for alternative_id_part in alternative_id_str.split(',')]
                 # Фильтруем CatalogItem по item_no из списка ids
-                query = query.filter(CatalogItem.item_no.in_(ids_list))
+                query = query.filter(CatalogItem.item_no.in_(alternative_id_list))
             else:
-                # Если ничего не найдено — можем оставить фильтр по другим полям или ничего не делать
-                query = query.filter(
-                    or_(
-                        CatalogItem.color.ilike(search_term),
-                        CatalogItem.description.ilike(search_term),
-                        CatalogItem.item_no.ilike(search_term)
+                # Совпадений в CatalogItem нет — ищем в MoreId
+                more_id_record = db.session.query(MoreId).filter(MoreId.old_id.ilike(search_term)).first()
+
+                if more_id_record:
+                    # Формируем список ids из поля
+                    ids_str = more_id_record.ids.strip()
+                    ids_list = [id_part.strip() for id_part in ids_str.split(',')]
+                    # Фильтруем CatalogItem по item_no из списка ids
+                    query = query.filter(CatalogItem.item_no.in_(ids_list))
+                else:
+                    # Если ничего не найдено — можем оставить фильтр по другим полям или ничего не делать
+                    query = query.filter(
+                        or_(
+                            CatalogItem.color.ilike(search_term),
+                            CatalogItem.description.ilike(search_term),
+                            CatalogItem.item_no.ilike(search_term)
+                        )
                     )
-                )
-    
+        
 
     # Изменённая сортировка:
     if sort_order == 'price':
@@ -2092,6 +2193,40 @@ def reset_login_and_password():
     except Exception as e:
         db.session.rollback()
         return "Ошибка", 400
+    
+    
+# --- 18. Чтение и запись данных из таблицы AlternativeId в базу данных (СТАРЫЕ id) ---
+@app.route('/import_alternative_id_from_excel', methods=['POST'])
+def import_alternative_id_from_excel():
+    try:
+        # Чтение файла Excel. Укажите правильный путь к файлу.
+        df = pd.read_excel('/app/app_lego/exports/alternativeid.xlsx')  # замените на актуальный путь
+
+        # Проверка наличия нужных колонок
+        required_columns = {'item_no', 'color', 'color_key', 'alternative_id'}
+        if not required_columns.issubset(df.columns):
+            raise ValueError(f"Excel файл должен содержать колонки: {required_columns}")
+
+        # Обновляем таблицу: очищаем старые данные (опционально)
+        # db.session.query(AlternativeId).delete()
+
+        # Или компактно вставляем новые записи:
+        for index, row in df.iterrows():
+            new_record = AlternativeId(
+                item_no=int(row['item_no']) if not pd.isna(row['item_no']) else None,
+                color=str(row['color']) if not pd.isna(row['color']) else None,
+                color_key=str(row['color_key']) if not pd.isna(row['color_key']) else None,
+                alternative_id=str(row['alternative_id']) if not pd.isna(row['alternative_id']) else None
+            )
+            db.session.add(new_record)
+
+        db.session.commit()
+        print("Данные успешно импортированы из Excel")
+        return "", 200
+    except Exception as e:
+        db.session.rollback()
+        print(f"Ошибка при импорте: {e}")
+        return f"{e}", 400
 
 
 # --- Запуск приложения ---
