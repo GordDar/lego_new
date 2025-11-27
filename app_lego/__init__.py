@@ -5,6 +5,7 @@ import re
 import unicodedata
 from functools import wraps
 
+from sqlalchemy import cast, String
 from flask import Flask, request, jsonify, abort, g, send_file
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
@@ -315,13 +316,17 @@ def get_catalog():
             item_nos = [item.item_no for item in catalog_matches]
             query = query.filter(CatalogItem.item_no.in_(item_nos))
         else:
-            alternative_id_record = db.session.query(AlternativeId).filter(AlternativeId.alternative_id.ilike(search_term)).first()
+            alternative_id_record = (
+                db.session.query(AlternativeId)
+                .filter(cast(AlternativeId.alternative_id, String).ilike(search_term))
+                .first()
+            )
             if alternative_id_record:
                 # Формируем список ids из поля
-                alternative_id_str = alternative_id_record.alternative_id.strip()
-                alternative_id_list = [alternative_id_part.strip() for alternative_id_part in alternative_id_str.split(',')]
+                # alternative_id_str = alternative_id_record.alternative_id.strip()
+                # alternative_id_list = [alternative_id_part.strip() for alternative_id_part in alternative_id_str.split(',')]
                 # Фильтруем CatalogItem по item_no из списка ids
-                query = query.filter(CatalogItem.item_no.in_(alternative_id_list))
+                query = query.filter(CatalogItem.item_no==alternative_id_record.item_no)
             else:
                 # Совпадений в CatalogItem нет — ищем в MoreId
                 more_id_record = db.session.query(MoreId).filter(MoreId.old_id.ilike(search_term)).first()
@@ -2213,10 +2218,10 @@ def import_alternative_id_from_excel():
         # Или компактно вставляем новые записи:
         for index, row in df.iterrows():
             new_record = AlternativeId(
-                item_no=int(row['item_no']) if not pd.isna(row['item_no']) else None,
+                item_no=str(row['item_no']) if not pd.isna(row['item_no']) else None,
                 color=str(row['color']) if not pd.isna(row['color']) else None,
-                color_key=str(row['color_key']) if not pd.isna(row['color_key']) else None,
-                alternative_id=str(row['alternative_id']) if not pd.isna(row['alternative_id']) else None
+                color_key=int(row['color_key']) if not pd.isna(row['color_key']) else None,
+                alternative_id=int(row['alternative_id']) if not pd.isna(row['alternative_id']) else None
             )
             db.session.add(new_record)
 
