@@ -321,7 +321,7 @@ def get_catalog():
                 alternative_id_str = alternative_id_record.alternative_id.strip()
                 alternative_id_list = [alternative_id_part.strip() for alternative_id_part in alternative_id_str.split(',')]
                 # Фильтруем CatalogItem по item_no из списка ids
-                query = query.filter(CatalogItem.item_no.in_(alternative_id_list))
+                query = query.filter(CatalogItem.item_no.in_(alternative_id_list), CatalogItem.color == alternative_id_record.color)
             else:
                 # Совпадений в CatalogItem нет — ищем в MoreId
                 more_id_record = db.session.query(MoreId).filter(MoreId.old_id.ilike(search_term)).first()
@@ -839,24 +839,81 @@ def determine_item_type(lot_id):
     else:
         return 'P'
 
+# def create_inventory_xml(items_data, color_dict):
+#     INVENTORY = ET.Element('INVENTORY')
+    
+#     for item in items_data:
+#         item_elem = ET.SubElement(INVENTORY, 'ITEM')
+        
+#         # Получаем id из входных данных
+#         item_id = item.get('lot_id')
+#         it_id = item.get('item_no')
+#         if not item_id:
+#             app.logger.warning("В элементе items_data отсутствует 'lot_id', пропускаю")
+#             app.logger.info(f"items_data: {items_data}")
+#             continue
+        
+#         # Получаем объект из базы по id
+#         catalog_item = CatalogItem.query.filter_by(lot_id=item_id).first()
+#         if not catalog_item:
+#             app.logger.warning(f"CatalogItem с id={it_id} не найден, пропускаю")
+#             continue
+        
+#         # Определяем тип (по item_no из базы)
+#         try:
+#             item_type = determine_item_type(item_id)
+#         except Exception as e:
+#             app.logger.error(f"Ошибка при определении типа для item_no={catalog_item.item_no}: {e}")
+#             item_type = 'P'  # дефолтный тип
+        
+#         # Получаем item_no из базы
+#         item_no = catalog_item.item_no
+        
+#         # Цвет и код цвета
+#         color_name = catalog_item.color
+#         color_code_value = ''
+#         if color_name and color_name in color_dict:
+#             color_code_value = color_dict[color_name]
+        
+#         # Количество берем из items_data, если нет — 1
+#         quantity = item.get('quantity', 1)
+        
+#         ET.SubElement(item_elem, 'ITEMTYPE').text = item_type
+#         ET.SubElement(item_elem, 'ITEMID').text = str(item_no)
+        
+#         if color_code_value:
+#             ET.SubElement(item_elem, 'COLOR').text = str(color_code_value)
+        
+#         ET.SubElement(item_elem, 'MAXPRICE').text = '-1.0000'
+#         ET.SubElement(item_elem, 'MINQTY').text = str(quantity)
+#         condition = catalog_item.condition
+#         if condition == 'Used':
+#             ET.SubElement(item_elem, 'CONDITION').text = 'U'
+#         else:
+#             ET.SubElement(item_elem, 'CONDITION').text = 'N'
+#         ET.SubElement(item_elem, 'NOTIFY').text = 'N'
+    
+#     return INVENTORY
+
 def create_inventory_xml(items_data, color_dict):
     INVENTORY = ET.Element('INVENTORY')
+    skipped_items = []  # Список пропущенных item_no
     
     for item in items_data:
-        item_elem = ET.SubElement(INVENTORY, 'ITEM')
-        
         # Получаем id из входных данных
         item_id = item.get('lot_id')
         it_id = item.get('item_no')
         if not item_id:
             app.logger.warning("В элементе items_data отсутствует 'lot_id', пропускаю")
             app.logger.info(f"items_data: {items_data}")
+            skipped_items.append(str(it_id) if it_id else 'unknown')  # Добавляем в пропущенные
             continue
         
         # Получаем объект из базы по id
         catalog_item = CatalogItem.query.filter_by(lot_id=item_id).first()
         if not catalog_item:
             app.logger.warning(f"CatalogItem с id={it_id} не найден, пропускаю")
+            skipped_items.append(str(it_id) if it_id else str(item_id))  # Добавляем в пропущенные
             continue
         
         # Определяем тип (по item_no из базы)
@@ -878,6 +935,8 @@ def create_inventory_xml(items_data, color_dict):
         # Количество берем из items_data, если нет — 1
         quantity = item.get('quantity', 1)
         
+        # Создаём элемент ITEM только здесь, если всё ок
+        item_elem = ET.SubElement(INVENTORY, 'ITEM')
         ET.SubElement(item_elem, 'ITEMTYPE').text = item_type
         ET.SubElement(item_elem, 'ITEMID').text = str(item_no)
         
@@ -893,7 +952,14 @@ def create_inventory_xml(items_data, color_dict):
             ET.SubElement(item_elem, 'CONDITION').text = 'N'
         ET.SubElement(item_elem, 'NOTIFY').text = 'N'
     
-    return INVENTORY
+    # Формируем сообщение
+    if skipped_items:
+        message = f"Следующие item_no не попали в XML по причине отсутстия деталей с такими номерами в нашей базе данных: {', '.join(skipped_items)}"
+    else:
+        message = "Все детали успешно обработаны и добавлены в Ваш wanted list."
+    
+    return INVENTORY, message
+
 
 def save_xml_to_file(xml_element):
     xml_bytes_io = io.BytesIO()
