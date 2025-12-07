@@ -303,42 +303,92 @@ def get_catalog():
     #             )
     #         )
     
-    query = query.filter(CatalogItem.quantity > 0)
+    # query = query.filter(CatalogItem.quantity > 0)
+
+    # if search:
+    #     search_term = f"%{search}%"
+
+    #     # Поиск в CatalogItem по item_no
+    #     catalog_matches = query.filter(CatalogItem.item_no.ilike(search_term)).all()
+
+    #     if catalog_matches:
+    #         # Есть совпадения в CatalogItem — фильтруем по ним
+    #         item_nos = [item.item_no for item in catalog_matches]
+    #         query = query.filter(CatalogItem.item_no.in_(item_nos))
+    #     else:
+    #         alternative_id_record = (
+    #             db.session.query(AlternativeId)
+    #             .filter(cast(AlternativeId.alternative_id, String).ilike(search_term))
+    #             .first()
+    #         )
+    #         if alternative_id_record:
+    #             # Формируем список ids из поля
+    #             alternative_id_str = alternative_id_record.alternative_id.strip()
+    #             alternative_id_list = [alternative_id_part.strip() for alternative_id_part in alternative_id_str.split(',')]
+    #             # Фильтруем CatalogItem по item_no из списка ids
+    #             query = query.filter(CatalogItem.item_no.in_(alternative_id_list), CatalogItem.color == alternative_id_record.color)
+    #         else:
+    #             # Совпадений в CatalogItem нет — ищем в MoreId
+    #             more_id_record = db.session.query(MoreId).filter(MoreId.old_id.ilike(search_term)).first()
+
+    #             if more_id_record:
+    #                 # Формируем список ids из поля
+    #                 ids_str = more_id_record.ids.strip()
+    #                 ids_list = [id_part.strip() for id_part in ids_str.split(',')]
+    #                 # Фильтруем CatalogItem по item_no из списка ids
+    #                 query = query.filter(CatalogItem.item_no.in_(ids_list))
+    #             else:
+    #                 # Если ничего не найдено — можем оставить фильтр по другим полям или ничего не делать
+    #                 query = query.filter(
+    #                     or_(
+    #                         CatalogItem.color.ilike(search_term),
+    #                         CatalogItem.description.ilike(search_term),
+    #                         CatalogItem.item_no.ilike(search_term)
+    #                     )
+    #                 )
+    
+    
+    from sqlalchemy import or_
 
     if search:
         search_term = f"%{search}%"
-
-        # Поиск в CatalogItem по item_no
-        catalog_matches = query.filter(CatalogItem.item_no.ilike(search_term)).all()
-
+        
+        # Создаем отдельный запрос для поиска совпадений в CatalogItem
+        catalog_matches = CatalogItem.query.filter(
+            CatalogItem.item_no.ilike(search_term),
+            CatalogItem.quantity > 0
+        ).all()
+        
         if catalog_matches:
-            # Есть совпадения в CatalogItem — фильтруем по ним
+            # Если есть прямые совпадения в item_no, используем их
             item_nos = [item.item_no for item in catalog_matches]
             query = query.filter(CatalogItem.item_no.in_(item_nos))
+        
         else:
-            alternative_id_record = (
-                db.session.query(AlternativeId)
-                .filter(cast(AlternativeId.alternative_id, String).ilike(search_term))
-                .first()
-            )
+            try:
+                search_int = int(search)
+            except ValueError as e:
+                search_int = 0
+            # Поиск в AlternativeId
+            alternative_id_record = db.session.query(AlternativeId).filter(AlternativeId.alternative_id == search_int).first()
+            
             if alternative_id_record:
-                # Формируем список ids из поля
-                alternative_id_str = alternative_id_record.alternative_id.strip()
-                alternative_id_list = [alternative_id_part.strip() for alternative_id_part in alternative_id_str.split(',')]
-                # Фильтруем CatalogItem по item_no из списка ids
-                query = query.filter(CatalogItem.item_no.in_(alternative_id_list), CatalogItem.color == alternative_id_record.color)
+                
+                query = query.filter(CatalogItem.item_no == alternative_id_record.item_no).filter(CatalogItem.color == alternative_id_record.color)
+            
             else:
-                # Совпадений в CatalogItem нет — ищем в MoreId
-                more_id_record = db.session.query(MoreId).filter(MoreId.old_id.ilike(search_term)).first()
-
+                # Поиск в MoreId
+                more_id_record = MoreId.query.filter(
+                    MoreId.old_id.ilike(search_term)
+                ).first()
+                
                 if more_id_record:
-                    # Формируем список ids из поля
-                    ids_str = more_id_record.ids.strip()
+                    ids_str = str(more_id_record.ids).strip()
                     ids_list = [id_part.strip() for id_part in ids_str.split(',')]
-                    # Фильтруем CatalogItem по item_no из списка ids
                     query = query.filter(CatalogItem.item_no.in_(ids_list))
+                
                 else:
-                    # Если ничего не найдено — можем оставить фильтр по другим полям или ничего не делать
+                    # Поиск по другим полям CatalogItem
                     query = query.filter(
                         or_(
                             CatalogItem.color.ilike(search_term),
@@ -346,8 +396,10 @@ def get_catalog():
                             CatalogItem.item_no.ilike(search_term)
                         )
                     )
-        
 
+
+    
+  
     # Изменённая сортировка:
     if sort_order == 'price':
         query = query.order_by(CatalogItem.price.asc(), CatalogItem.item_no.asc())
@@ -381,7 +433,6 @@ def get_catalog():
     })
     
     
-
 
 
 
@@ -1130,7 +1181,8 @@ def create_initial_settings():
     initial_settings = [
         {'settings_name': 'byn', 'settings_value': 3},
         {'settings_name': 'rub', 'settings_value': 82},
-        {'settings_name': 'min', 'settings_value': 15}
+        {'settings_name': 'min', 'settings_value': 15}, 
+        {'settings_name': 'multipl', 'settings_value': 1.0}, 
     ]
 
     for setting in initial_settings:
@@ -2267,7 +2319,7 @@ def reset_login_and_password():
     
     
 # --- 18. Чтение и запись данных из таблицы AlternativeId в базу данных (СТАРЫЕ id) ---
-@app.route('/import_alternative_id_from_excel', methods=['POST'])
+@app.route('/import_alternative_id_from_excel', methods=['GET'])
 def import_alternative_id_from_excel():
     try:
         # Чтение файла Excel. Укажите правильный путь к файлу.
