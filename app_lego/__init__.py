@@ -1014,7 +1014,7 @@ def create_inventory_xml(items_data, color_dict):
     else:
         message = "Все детали успешно обработаны и добавлены в Ваш wanted list."
     
-    return INVENTORY, message
+    return INVENTORY
 
 
 def save_xml_to_file(xml_element):
@@ -2222,6 +2222,7 @@ def parse_xml_from_gcs():
                     'color': existing_item.color,
                     'description': existing_item.description,
                     'price': existing_item.price,
+                    'lot_id': existing_item.lot_id,
                     'quantity': existing_item.quantity,
                     'category_name': existing_item.category.name if existing_item.category else None,
                     'remarks': existing_item.remarks,
