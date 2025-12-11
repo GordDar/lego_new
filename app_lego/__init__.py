@@ -1920,8 +1920,7 @@ def process_db_add(file_name: str, task_id: str):
 
             db.session.commit()
             logging.info("Обновление old_id завершено")
-            update_task_status(old_id_task_id, "completed", "Обновление old_id завершено")
-            logging.info(f"Все пары: {all_pairs}")
+
 
         except Exception as e:
             update_task_status(old_id_task_id, "error", str(e))
