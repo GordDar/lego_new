@@ -2319,7 +2319,7 @@ def reset_login_and_password():
     
     
 # --- 18. Чтение и запись данных из таблицы AlternativeId в базу данных (СТАРЫЕ id) ---
-@app.route('/import_alternative_id_from_excel', methods=['GET'])
+@app.route('/import_alternative_id_from_excel', methods=['POST'])
 def import_alternative_id_from_excel():
     try:
         # Чтение файла Excel. Укажите правильный путь к файлу.
