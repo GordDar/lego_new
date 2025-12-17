@@ -714,7 +714,7 @@ def submit_cart():
     item_ids = {item['lot_id'] for item in items_data if 'lot_id' in item}
     
     # Получаем все товары за один запрос
-    catalog_items = CatalogItem.query.filter(CatalogItem.lot_id.in_(item_ids)).all()
+    catalog_items = CatalogItem.query.filter(CatalogItem.lot_id.in_(item_ids)).order_by(CatalogItem.item_no.asc(), CatalogItem.color.asc()).all()
     for catalog_item in catalog_items:
         catalog_items_cache[catalog_item.lot_id] = catalog_item
 
@@ -1374,7 +1374,7 @@ def get_order_items_list(order):
             "condition": catalog_item.condition
         })
     # Сортировка по item_no и по color (алфавитно)
-    items_list_sorted = sorted(items_list, key=lambda x: (x['item_no'], x['color'].lower() if x['color'] else ''))
+    items_list_sorted = sorted(items_list, key=lambda x: (x['color'].lower() if x['color'] else '', x['item_no']))
     return items_list_sorted
 
 
