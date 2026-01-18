@@ -795,19 +795,33 @@ def submit_cart():
 
         db.session.commit()  # фиксируем изменения до отправки письма
 
-        # Генерация PDF (синхронно, чтобы получить pdf_bytes)
-        pdf_bytes = generate_order_pdf(order=order, order_details=order_details_for_email)
+        # # Генерация PDF (синхронно, чтобы получить pdf_bytes)
+        # pdf_bytes = generate_order_pdf(order=order, order_details=order_details_for_email)
 
-        # Функция-обертка для отправки письма в отдельном потоке
-        def send_email_async(order, order_details, pdf):
-            with app.app_context():
+        # # Функция-обертка для отправки письма в отдельном потоке
+        # def send_email_async(order, order_details, pdf):
+        #     with app.app_context():
+        #         try:
+        #             send_order_email(order, order_details, pdf_bytes=pdf)
+        #         except Exception:
+        #             logging.exception("Ошибка при отправке письма")
+
+        # # Запускаем отправку письма в отдельном потоке
+        # threading.Thread(target=send_email_async, args=(order, order_details_for_email, pdf_bytes)).start()
+        
+        def generate_pdf_and_send_email(order, order_details):
+            def task():
                 try:
-                    send_order_email(order, order_details, pdf_bytes=pdf)
+                    with app.app_context():
+                        # Теперь внутри этого блока есть действительный контекст Flask
+                        pdf_bytes = generate_order_pdf(order=order, order_details=order_details)
+                        send_order_email(order, order_details, pdf_bytes=pdf_bytes)
                 except Exception:
-                    logging.exception("Ошибка при отправке письма")
+                    logging.exception("Ошибка при генерации PDF или отправке письма")
+            threading.Thread(target=task).start()
 
-        # Запускаем отправку письма в отдельном потоке
-        threading.Thread(target=send_email_async, args=(order, order_details_for_email, pdf_bytes)).start()
+        # В основном коде вызываете так:
+        generate_pdf_and_send_email(order, order_details_for_email)
 
         return jsonify({'message': 'Order created', 'order_id': order.id})
 
