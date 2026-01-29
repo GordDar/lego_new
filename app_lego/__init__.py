@@ -405,6 +405,8 @@ def get_catalog():
         query = query.order_by(CatalogItem.price.asc(), CatalogItem.item_no.asc())
     elif sort_order == 'quantity':
         query = query.order_by(CatalogItem.quantity.asc(), CatalogItem.item_no.asc())
+    elif sort_order == 'color':
+        query = query.order_by(CatalogItem.color.asc(), CatalogItem.item_no.asc())
     else:
         query = query.order_by(CatalogItem.item_no.asc(), CatalogItem.color.asc())
 
@@ -414,7 +416,7 @@ def get_catalog():
             'id': item.id,
             'item_no': item.item_no,
             'old_id': [more_id_record.old_id for more_id_record in MoreId.query.filter(MoreId.ids == item.item_no).all()],
-            'url': item.url or 'https://storage.googleapis.com/lego-bricks-app-frontend/default.jpg',
+            'url': item.url,
             'color': item.color,
             'lot_id': item.lot_id,
             'description': item.description,
@@ -530,33 +532,36 @@ def generate_order_pdf(order, order_details):
 
 @app.route('/download_pdf', methods=['POST'])
 def download_pdf():
+    """
+    Generate PDF from cart items.
+    Accepts items with optional image_base64 field to avoid fetching images from network.
+    If image_base64 is provided, it will be used directly in the PDF.
+    Otherwise, falls back to URL-based image loading (slower).
+    """
     data = request.get_json()
     items_data = data.get('items', [])
 
-    catalog_items_cache = {}
     order_details_for_pdf = []
 
     for item in items_data:
         logging.info(f"Полученный item: {item}")
-        item_id = item['item_no']
-        lot_id = item['lot_id']
         quantity_requested = item.get('quantity', 1)
-
-        if lot_id not in catalog_items_cache:
-            catalog_item = CatalogItem.query.filter_by(lot_id=lot_id).first()
-            if not catalog_item:
-                return jsonify({'error': f'Item with id {item_id} не найден'}), 404
-            catalog_items_cache[lot_id] = catalog_item
-        else:
-            catalog_item = catalog_items_cache[lot_id]
-
-        price_per_unit = getattr(catalog_item, 'price', 0)
+        
+        # Use data passed from frontend (includes base64 images)
+        # This eliminates both DB queries and network image fetches
+        price_per_unit = item.get('price', 0)
         total_price = price_per_unit * quantity_requested
+        
+        # Prefer base64 image if provided (much faster), fallback to URL
+        image_data = item.get('image_base64')
+        if not image_data:
+            # Fallback to URL if no base64 provided
+            image_data = item.get('url', '')
 
         order_details_for_pdf.append({
-            'description': getattr(catalog_item, 'description', ''),
-            'item_no':getattr(catalog_item, 'item_no', ''), 
-            'url': getattr(catalog_item, 'url', ''),
+            'description': item.get('description', ''),
+            'item_no': item.get('item_no', ''), 
+            'url': image_data,  # This can be base64 data URI or URL
             'quantity_in_order': quantity_requested,
             'unit_price': price_per_unit,
             'total_price': total_price
@@ -714,7 +719,7 @@ def submit_cart():
     item_ids = {item['lot_id'] for item in items_data if 'lot_id' in item}
     
     # Получаем все товары за один запрос
-    catalog_items = CatalogItem.query.filter(CatalogItem.lot_id.in_(item_ids)).order_by(CatalogItem.item_no.asc(), CatalogItem.color.asc()).all()
+    catalog_items = CatalogItem.query.filter(CatalogItem.lot_id.in_(item_ids)).all()
     for catalog_item in catalog_items:
         catalog_items_cache[catalog_item.lot_id] = catalog_item
 
@@ -743,9 +748,15 @@ def submit_cart():
         price_per_unit = getattr(catalog_item, 'price', 0)
         total_price += price_per_unit * quantity_requested
 
+        # Use base64 image from frontend if available (faster PDF generation)
+        # Otherwise fall back to URL from database
+        image_data = item.get('image_base64')
+        if not image_data:
+            image_data = catalog_item.url
+        
         order_details_for_email.append({
             'description': catalog_item.description,
-            'url': catalog_item.url,
+            'url': image_data,  # Can be base64 data URI or URL
             'remarks': catalog_item.remarks,
             'color': catalog_item.color,
             'item_no': catalog_item.item_no,
@@ -795,33 +806,45 @@ def submit_cart():
 
         db.session.commit()  # фиксируем изменения до отправки письма
 
-        # # Генерация PDF (синхронно, чтобы получить pdf_bytes)
-        # pdf_bytes = generate_order_pdf(order=order, order_details=order_details_for_email)
-
-        # # Функция-обертка для отправки письма в отдельном потоке
-        # def send_email_async(order, order_details, pdf):
-        #     with app.app_context():
-        #         try:
-        #             send_order_email(order, order_details, pdf_bytes=pdf)
-        #         except Exception:
-        #             logging.exception("Ошибка при отправке письма")
-
-        # # Запускаем отправку письма в отдельном потоке
-        # threading.Thread(target=send_email_async, args=(order, order_details_for_email, pdf_bytes)).start()
+        # Extract order data as plain dict BEFORE passing to thread
+        # This avoids SQLAlchemy DetachedInstanceError in background thread
+        order_data_for_thread = {
+            'id': order.id,
+            'customer_name': order.customer_name,
+            'customer_telephone': order.customer_telephone,
+            'customer_email': order.customer_email,
+            'dostavka': order.dostavka,
+            'total_price': order.total_price,
+            'created_at': order.created_at
+        }
         
-        def generate_pdf_and_send_email(order, order_details):
+        def generate_pdf_and_send_email(order_data, order_details):
+            """
+            Generate PDF and send email in background thread.
+            
+            Args:
+                order_data: Plain dict with order info (NOT SQLAlchemy object!)
+                order_details: List of dicts with item details
+            """
             def task():
                 try:
                     with app.app_context():
-                        # Теперь внутри этого блока есть действительный контекст Flask
-                        pdf_bytes = generate_order_pdf(order=order, order_details=order_details)
-                        send_order_email(order, order_details, pdf_bytes=pdf_bytes)
+                        # Create a simple object-like wrapper for order data
+                        # so send_order_email can access attributes like order.id
+                        class OrderWrapper:
+                            def __init__(self, data):
+                                for key, value in data.items():
+                                    setattr(self, key, value)
+                        
+                        order_obj = OrderWrapper(order_data)
+                        pdf_bytes = generate_order_pdf(order=order_obj, order_details=order_details)
+                        send_order_email(order_obj, order_details, pdf_bytes=pdf_bytes)
                 except Exception:
                     logging.exception("Ошибка при генерации PDF или отправке письма")
             threading.Thread(target=task).start()
 
-        # В основном коде вызываете так:
-        generate_pdf_and_send_email(order, order_details_for_email)
+        # Pass plain dict, not SQLAlchemy object
+        generate_pdf_and_send_email(order_data_for_thread, order_details_for_email)
 
         return jsonify({'message': 'Order created', 'order_id': order.id})
 
