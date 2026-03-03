@@ -441,25 +441,45 @@ import io
 from flask import request, jsonify, send_file
 from weasyprint import HTML, CSS
 
+def get_setting_value(setting_name):
+    setting = Settings.query.filter_by(settings_name=setting_name).first()
+    if setting:
+        try:
+            return float(setting.settings_value)
+        except (ValueError, TypeError):
+            return 1.0
+    return 1.0
 
 def generate_order_pdf(order, order_details):
     """
     Формирует PDF по данным заказа и возвращает его в виде байтов.
     """
-    total_price_value = sum(item['total_price'] for item in order_details)
-
+    # Получение коэффициентов валют
+    byn_coefficient = get_setting_value('byn')
+    rub_coefficient = get_setting_value('rub')
+    
+    total_usd = 0
+    total_byn = 0
+    total_rub = 0
+    
     html_content = f"""
     <html>
     <head>
-        <meta charset="UTF-8">
+        <meta charset="UTF-8" />
         <style>
-            body {{
-                font-family: DejaVu Sans, Arial, sans-serif;
+            @page {{
                 margin: 40px;
+            }}
+            body {{
+                font-family:Arial, sans-serif;
+                line-height: 1.5;
+                color: #333;
             }}
             h1 {{
                 text-align: center;
-                font-size: 24px;
+                font-family: Georgia, serif;
+                font-size: 28px;
+                color: #2E86C1;
                 margin-bottom: 20px;
             }}
             table {{
@@ -467,23 +487,54 @@ def generate_order_pdf(order, order_details):
                 border-collapse: collapse;
                 margin-bottom: 20px;
             }}
-            th, td {{
-                border: 1px solid #000;
-                padding: 8px;
-                text-align: left;
-                font-size: 14px;
+            thead {{
+                background-color: #d3d3d3; /* Светло-серый для заголовка */
             }}
             th {{
-                background-color: #f0f0f0;
+                font-family: "Arial Black", Gadget, sans-serif;
+                font-size: 14px; /* Уменьшенный шрифт */
+                color: #000;
+                padding: 10px;
+                border: none; /* Убираем границы */
+                text-align: left;
+            }}
+            td {{
+                border: 1px solid #ddd;
+                padding: 10px;
+                font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+                font-size: 14px;
+            }}
+            tr:nth-child(even) {{
+                background-color: #f9f9f9;
             }}
             img {{
-                width: 90px;
+                max-width: 100px;
+                height: auto;
+                border: none; /* Убираем рамку у картинок */
             }}
             .total {{
-                text-align: right;
+                font-family: "Arial Black", Gadget, sans-serif;
+                font-size: 18px;
                 font-weight: bold;
-                font-size: 16px;
-                margin-top: 10px;
+                color: #C70039;
+                text-align: right;
+                margin-top: 20px;
+            }}
+            .header-section {{
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                margin-bottom: 20px;
+            }}
+            .company-title {{
+                font-family: "Brush Script MT", cursive;
+                font-size: 32px;
+                color: #D35400;
+            }}
+            .date {{
+                font-family: "Courier New", Courier, monospace;
+                font-size: 14px;
+                color: #555;
             }}
         </style>
     </head>
@@ -496,35 +547,148 @@ def generate_order_pdf(order, order_details):
                     <th>Id товара</th>
                     <th>Описание</th>
                     <th>Кол-во</th>
-                    <th>Цена</th>
-                    <th>Всего</th>
+                    <th>Цена за 1 шт.</th>
+                    <th>Общая цена</th>
                 </tr>
             </thead>
             <tbody>
     """
 
     for item in order_details:
+        total_price_item = item['total_price']
+        quantity_in_order = item['quantity_in_order']
+        unit_price = item['unit_price']
+
+        # Расчет цен в валютах
+        unit_price_byn = unit_price * byn_coefficient
+        unit_price_rub = unit_price * rub_coefficient
+
+        total_byn_item = total_price_item * byn_coefficient
+        total_rub_item = total_price_item * rub_coefficient
+
+        # Суммируем итого
+        total_usd += total_price_item
+        total_byn += total_byn_item
+        total_rub += total_rub_item
+
         html_content += f"""
-                <tr>
-                    <td><img src="{item['url']}" alt="image" style="max-width:100px; height:auto;"></td>
-                    <td>{item['item_no']}</td>
-                    <td>{item['description']}</td>
-                    <td>{item['quantity_in_order']}</td>
-                    <td>{item['unit_price']:.2f}</td>
-                    <td>{item['total_price']:.2f}</td>
-                </tr>
+            <tr>
+                <td><img src="{item['url']}" alt="image" style="max-width:100px; height:auto;"></td>
+                <td>{item['item_no']}</td>
+                <td>{item['description']}</td>
+                <td style="text-align:center;">{quantity_in_order}</td>
+                <td style="text-align:right;">{unit_price:.2f}$<br>
+                    ({unit_price_byn:.2f} BYN / {unit_price_rub:.2f} RUB)
+                </td>
+                <td style="text-align:right;">{total_price_item:.2f}$<br>
+                    ({total_byn_item:.2f} BYN / {total_rub_item:.2f} RUB)
+                </td>
+            </tr>
         """
+
+    total_byn_str = f"{total_byn:.2f} BYN"
+    total_rub_str = f"{total_rub:.2f} RUB"
+    total_usd_str = f"{total_usd:.2f}$"
 
     html_content += f"""
             </tbody>
         </table>
-        <div class="total">Общая сумма: {total_price_value:.2f}</div>
+        <div class="total">
+            Итог:
+            {total_usd_str} / {total_byn_str} / {total_rub_str}
+        </div>
     </body>
     </html>
     """
 
+    # Генерация PDF
     pdf_bytes = HTML(string=html_content).write_pdf()
     return pdf_bytes
+
+
+# def generate_order_pdf(order, order_details):
+#     """
+#     Формирует PDF по данным заказа и возвращает его в виде байтов.
+#     """
+#     total_price_value = sum(item['total_price'] for item in order_details)
+
+#     html_content = f"""
+#     <html>
+#     <head>
+#         <meta charset="UTF-8">
+#         <style>
+#             body {{
+#                 font-family: DejaVu Sans, Arial, sans-serif;
+#                 margin: 40px;
+#             }}
+#             h1 {{
+#                 text-align: center;
+#                 font-size: 24px;
+#                 margin-bottom: 20px;
+#             }}
+#             table {{
+#                 width: 100%;
+#                 border-collapse: collapse;
+#                 margin-bottom: 20px;
+#             }}
+#             th, td {{
+#                 border: 1px solid #000;
+#                 padding: 8px;
+#                 text-align: left;
+#                 font-size: 14px;
+#             }}
+#             th {{
+#                 background-color: #f0f0f0;
+#             }}
+#             img {{
+#                 width: 90px;
+#             }}
+#             .total {{
+#                 text-align: right;
+#                 font-weight: bold;
+#                 font-size: 16px;
+#                 margin-top: 10px;
+#             }}
+#         </style>
+#     </head>
+#     <body>
+#         <h1>Детали заказа</h1>
+#         <table>
+#             <thead>
+#                 <tr>
+#                     <th>Изображение</th>
+#                     <th>Id товара</th>
+#                     <th>Описание</th>
+#                     <th>Кол-во</th>
+#                     <th>Цена</th>
+#                     <th>Всего</th>
+#                 </tr>
+#             </thead>
+#             <tbody>
+#     """
+
+#     for item in order_details:
+#         html_content += f"""
+#                 <tr>
+#                     <td><img src="{item['url']}" alt="image" style="max-width:100px; height:auto;"></td>
+#                     <td>{item['item_no']}</td>
+#                     <td>{item['description']}</td>
+#                     <td>{item['quantity_in_order']}</td>
+#                     <td>{item['unit_price']:.2f}</td>
+#                     <td>{item['total_price']:.2f}</td>
+#                 </tr>
+#         """
+
+#     html_content += f"""
+#             </tbody>
+#         </table>
+#         <div class="total">Общая сумма: {total_price_value:.2f}</div>
+#     </body>
+#     </html>
+#     """
+
+#     pdf_bytes = HTML(string=html_content).write_pdf()
+#     return pdf_bytes
 
 
 
@@ -608,7 +772,7 @@ def send_order_email(order, order_details, pdf_bytes):
         # to_email = 'oldi2008@yandex.ru' # Замените на актуальный адрес
         
         created_at_formatted = order.created_at.strftime("%H:%M %d-%m-%Y") if hasattr(order, 'created_at') and order.created_at else ""
-
+        
         table_rows = ""
         for item in order_details:
             description = item.get('description', '')
@@ -632,7 +796,7 @@ def send_order_email(order, order_details, pdf_bytes):
                 </tr>
             """
 
-        html_content_email=f"""
+        html_content_email = f"""
         <html>
         <body>
             <h2>Новый заказ №{order.id}</h2>
@@ -654,8 +818,64 @@ def send_order_email(order, order_details, pdf_bytes):
                         <th style="text-align:center;">Заметки</th>
                         <th style="text-align:center;">Кол-во</th>
                         <th style="text-align:right;">Цена за ед.</th>
-                        <th style="text-align:right;">Итог</th></tr></thead><tbody>{table_rows}
-                </tbody></table></body></html>"""
+                        <th style="text-align:right;">Итог</th>
+                    </tr>
+                </thead>
+                <tbody>{table_rows}
+                </tbody>
+            </table>
+        </body>
+        </html>
+        """
+        
+
+        # table_rows = ""
+        # for item in order_details:
+        #     description = item.get('description', '')
+        #     url_img = item.get('url', '')
+        #     quantity_in_order = item.get('quantity_in_order', '')
+        #     unit_price = item.get('unit_price', 0)
+        #     total_price_item = item.get('total_price', 0)
+        #     id_ = item.get('item_no', '')
+        #     color_ = item.get('color', '')
+        #     remarks_ = item.get('remarks', '')
+
+        #     table_rows += f"""
+        #         <tr>
+        #             <td>{description}</td>
+        #             <td>{id_}</td>
+        #             <td>{color_}</td>
+        #             <td>{remarks_}</td>
+        #             <td style="text-align:center;">{quantity_in_order}</td>
+        #             <td style="text-align:right;">{unit_price:.2f}</td>
+        #             <td style="text-align:right;">{total_price_item:.2f}</td>
+        #         </tr>
+        #     """
+
+        # html_content_email=f"""
+        # <html>
+        # <body>
+        #     <h2>Новый заказ №{order.id}</h2>
+        #     <h4><a href="http://34.110.202.124/orders/{order.id}">Ссылка на заказ №{order.id}</a></h4>
+        #     <p><strong>Дата:</strong> {created_at_formatted}</p>
+        #     <p><strong>Клиент:</strong> {getattr(order,'customer_name','')}</p>
+        #     <p><strong>Телефон:</strong> {getattr(order,'customer_telephone','')}</p>
+        #     <p><strong>Почта:</strong> {getattr(order,'customer_email','')}</p>
+        #     <p><strong>Доставка:</strong> {'Да' if getattr(order,'dostavka',False) else 'Нет'}</p>
+        #     <p><strong>Общая сумма:</strong> {getattr(order,'total_price',0):.2f} долл.</p>
+
+        #     <h3>Позиции заказа:</h3>
+        #     <table border="1" cellpadding="5" cellspacing="0" style="border-collapse: collapse; width: 100%;">
+        #         <thead style="background-color:#f2f2f2;">
+        #             <tr style="text-align:left;">
+        #                 <th style="text-align:left;">Описание</th>
+        #                 <th style="text-align:center;">Id</th>
+        #                 <th style="text-align:center;">Цвет</th>
+        #                 <th style="text-align:center;">Заметки</th>
+        #                 <th style="text-align:center;">Кол-во</th>
+        #                 <th style="text-align:right;">Цена за ед.</th>
+        #                 <th style="text-align:right;">Итог</th></tr></thead><tbody>{table_rows}
+        #         </tbody></table></body></html>"""
 
         msg= MIMEMultipart('alternative')
         msg['Subject']=subject
