@@ -459,6 +459,8 @@ def generate_order_pdf(order, order_details):
     # Получение коэффициентов валют
     byn_coefficient = get_setting_value('byn')
     rub_coefficient = get_setting_value('rub')
+    multipl_coefficient = get_setting_value('multipl')
+    
     
     total_usd = 0
     total_byn = 0
@@ -557,12 +559,12 @@ def generate_order_pdf(order, order_details):
     """
 
     for item in order_details:
-        total_price_item = item['total_price']
+        total_price_item = item['total_price'] * multipl_coefficient
         quantity_in_order = item['quantity_in_order']
-        unit_price = item['unit_price']
+        unit_price = item['unit_price'] * multipl_coefficient
 
         # Расчет цен в валютах
-        unit_price_byn = unit_price * byn_coefficient
+        unit_price_byn = unit_price * byn_coefficient 
         unit_price_rub = unit_price * rub_coefficient
 
         total_byn_item = total_price_item * byn_coefficient
