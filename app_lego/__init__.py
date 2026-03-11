@@ -466,96 +466,238 @@ def generate_order_pdf(order, order_details):
     total_byn = 0
     total_rub = 0
     
+    # html_content = f"""
+    # <html>
+    # <head>
+    #     <meta charset="UTF-8" />
+    #     <style>
+    #         @page {{
+    #             margin: 40px;
+    #         }}
+    #         body {{
+    #             font-family:Arial, sans-serif;
+    #             line-height: 1.5;
+    #             color: #333;
+    #         }}
+    #         h1 {{
+    #             text-align: center;
+    #             font-family: Georgia, serif;
+    #             font-size: 28px;
+    #             color: #2E86C1;
+    #             margin-bottom: 20px;
+    #         }}
+    #         table {{
+    #             width: 100%;
+    #             border-collapse: collapse;
+    #             margin-bottom: 20px;
+    #         }}
+    #         thead {{
+    #             background-color: #d3d3d3; /* Светло-серый для заголовка */
+    #         }}
+    #         th {{
+    #             font-family: "Arial Black", Gadget, sans-serif;
+    #             font-size: 10px; /* Уменьшенный шрифт */
+    #             color: #000;
+    #             padding: 10px;
+    #             border: none; /* Убираем границы */
+    #             text-align: left;
+    #         }}
+    #         td {{
+    #             border: 1px solid #ddd;
+    #             padding: 10px;
+    #             font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+    #             font-size: 12px;
+    #         }}
+    #         tr:nth-child(even) {{
+    #             background-color: #f9f9f9;
+    #         }}
+    #         img {{
+    #             max-width: 50px;
+    #             height: auto;
+    #             border: none; /* Убираем рамку у картинок */
+    #         }}
+    #         .total {{
+    #             font-family: "Arial Black", Gadget, sans-serif;
+    #             font-size: 14px;
+    #             font-weight: bold;
+    #             color: #C70039;
+    #             text-align: right;
+    #             margin-top: 20px;
+    #         }}
+    #         .header-section {{
+    #             display: flex;
+    #             justify-content: space-between;
+    #             align-items: center;
+    #             margin-bottom: 20px;
+    #         }}
+    #         .company-title {{
+    #             font-family: "Brush Script MT", cursive;
+    #             font-size: 32px;
+    #             color: #D35400;
+    #         }}
+    #         .date {{
+    #             font-family: "Courier New", Courier, monospace;
+    #             font-size: 14px;
+    #             color: #555;
+    #         }}
+    #     </style>
+    # </head>
+    # <body>
+    #     <h1>Список деталей</h1>
+    #     <table>
+    #         <thead>
+    #             <tr>
+    #                 <th>Изображение</th>
+    #                 <th>Id товара</th>
+    #                 <th>Описание</th>
+    #                 <th>Кол-во</th>
+    #                 <th>Цена за 1 шт.</th>
+    #                 <th>Общая цена</th>
+    #             </tr>
+    #         </thead>
+    #         <tbody>
+    # """
+
+    # for item in order_details:
+    #     total_price_item = item['total_price'] * multipl_coefficient
+    #     quantity_in_order = item['quantity_in_order']
+    #     unit_price = item['unit_price'] * multipl_coefficient
+
+    #     # Расчет цен в валютах
+    #     unit_price_byn = unit_price * byn_coefficient 
+    #     unit_price_rub = unit_price * rub_coefficient
+
+    #     total_byn_item = total_price_item * byn_coefficient
+    #     total_rub_item = total_price_item * rub_coefficient
+
+    #     # Суммируем итого
+    #     total_usd += total_price_item
+    #     total_byn += total_byn_item
+    #     total_rub += total_rub_item
+
+    #     html_content += f"""
+    #         <tr>
+    #             <td><img src="{item['url']}" alt="image" style="max-width:100px; height:auto;"></td>
+    #             <td>{item['item_no']}</td>
+    #             <td>{item['description']}</td>
+    #             <td style="text-align:center;">{quantity_in_order}</td>
+    #             <td style="text-align:right;">{unit_price:.2f}$<br>
+    #                 ({unit_price_byn:.2f} BYN / {unit_price_rub:.2f} RUB)
+    #             </td>
+    #             <td style="text-align:right;">{total_price_item:.2f}$<br>
+    #                 ({total_byn_item:.2f} BYN / {total_rub_item:.2f} RUB)
+    #             </td>
+    #         </tr>
+    #     """
+
+    # total_byn_str = f"{total_byn:.2f} BYN"
+    # total_rub_str = f"{total_rub:.2f} RUB"
+    # total_usd_str = f"{total_usd:.2f}$"
+
+    # html_content += f"""
+    #         </tbody>
+    #     </table>
+    #     <div class="total">
+    #         Итог:
+    #         {total_usd_str} / {total_byn_str} / {total_rub_str}
+    #     </div>
+    # </body>
+    # </html>
+    # """
+    
     html_content = f"""
     <html>
     <head>
-        <meta charset="UTF-8" />
-        <style>
-            @page {{
-                margin: 40px;
-            }}
-            body {{
-                font-family:Arial, sans-serif;
-                line-height: 1.5;
-                color: #333;
-            }}
-            h1 {{
-                text-align: center;
-                font-family: Georgia, serif;
-                font-size: 28px;
-                color: #2E86C1;
-                margin-bottom: 20px;
-            }}
-            table {{
-                width: 100%;
-                border-collapse: collapse;
-                margin-bottom: 20px;
-            }}
-            thead {{
-                background-color: #d3d3d3; /* Светло-серый для заголовка */
-            }}
-            th {{
-                font-family: "Arial Black", Gadget, sans-serif;
-                font-size: 14px; /* Уменьшенный шрифт */
-                color: #000;
-                padding: 10px;
-                border: none; /* Убираем границы */
-                text-align: left;
-            }}
-            td {{
-                border: 1px solid #ddd;
-                padding: 10px;
-                font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
-                font-size: 14px;
-            }}
-            tr:nth-child(even) {{
-                background-color: #f9f9f9;
-            }}
-            img {{
-                max-width: 100px;
-                height: auto;
-                border: none; /* Убираем рамку у картинок */
-            }}
-            .total {{
-                font-family: "Arial Black", Gadget, sans-serif;
-                font-size: 18px;
-                font-weight: bold;
-                color: #C70039;
-                text-align: right;
-                margin-top: 20px;
-            }}
-            .header-section {{
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-                margin-bottom: 20px;
-            }}
-            .company-title {{
-                font-family: "Brush Script MT", cursive;
-                font-size: 32px;
-                color: #D35400;
-            }}
-            .date {{
-                font-family: "Courier New", Courier, monospace;
-                font-size: 14px;
-                color: #555;
-            }}
-        </style>
+    <meta charset="UTF-8" />
+    <style>
+        @page {{
+            margin: 40px;
+        }}
+        body {{
+            font-family:Arial, sans-serif;
+            line-height: 1.5;
+            color: #333;
+            font-size: 12px; /* Общий размер шрифта стал меньше */
+        }}
+        h1 {{
+            text-align: center;
+            font-family: Georgia, serif;
+            font-size: 24px; /* Меньше заголовок */
+            color: #2E86C1;
+            margin-bottom: 20px;
+        }}
+        table {{
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+            font-size: 11px; /* Размер шрифта внутри таблицы */
+        }}
+        thead {{
+            background-color: #d3d3d3; /* Светло-серый для заголовка */
+        }}
+        th {{
+            font-family: "Arial Black", Gadget, sans-serif;
+            font-size: 11px; /* Уменьшен */
+            color: #000;
+            padding: 8px;
+            border: none; /* Убираем границы */
+            text-align: left;
+        }}
+        td {{
+            border: 1px solid #ddd;
+            padding: 4px; /* уменьшить отступы внутри ячейки */
+            font-family: "Segoe UI", Tahoma, Geneva, sans-serif;
+            font-size: 11px;
+        }}
+        tr:nth-child(even) {{
+            background-color: #f9f9f9;
+        }}
+        img {{
+            width: 60px;
+            height: 60px;
+            object-fit: contain; /* Чтобы изображение сохраняло пропорции внутри рамки */
+            border: none;
+        }}
+        .total {{
+            font-family: "Arial Black", Gadget, sans-serif;
+            font-size: 16px; /* Меньше общего текста суммы */
+            font-weight: bold;
+            color: #C70039;
+            text-align: right;
+            margin-top: 20px;
+        }}
+        .header-section {{
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }}
+        .company-title {{
+            font-family: "Brush Script MT", cursive;
+            font-size: 28px; /* Меньше заголовка */
+            color: #D35400;
+        }}
+        .date {{
+            font-family: "Courier New", Courier, monospace;
+            font-size: 12px; /* Меньше даты */
+            color: #555;
+        }}
+    </style>
     </head>
     <body>
-        <h1>Детали заказа</h1>
-        <table>
-            <thead>
-                <tr>
-                    <th>Изображение</th>
-                    <th>Id товара</th>
-                    <th>Описание</th>
-                    <th>Кол-во</th>
-                    <th>Цена за 1 шт.</th>
-                    <th>Общая цена</th>
-                </tr>
-            </thead>
-            <tbody>
+    <h1>Список деталей</h1>
+    <table>
+    <thead>
+    <tr>
+        <th>Изображение</th>
+        <th>Id товара</th>
+        <th>Описание</th>
+        <th>Количество</th>
+        <th>Цена за 1 шт. (BYN)</th>
+        <th>Общая цена (BYN)</th>
+    </tr>
+    </thead>
+    <tbody>
     """
 
     for item in order_details:
@@ -563,44 +705,32 @@ def generate_order_pdf(order, order_details):
         quantity_in_order = item['quantity_in_order']
         unit_price = item['unit_price'] * multipl_coefficient
 
-        # Расчет цен в валютах
-        unit_price_byn = unit_price * byn_coefficient 
-        unit_price_rub = unit_price * rub_coefficient
-
+        # Расчет цены в BYN
+        unit_price_byn = unit_price * byn_coefficient
         total_byn_item = total_price_item * byn_coefficient
-        total_rub_item = total_price_item * rub_coefficient
 
-        # Суммируем итого
-        total_usd += total_price_item
+        # Суммируем итоговую сумму в BYN
         total_byn += total_byn_item
-        total_rub += total_rub_item
 
         html_content += f"""
-            <tr>
-                <td><img src="{item['url']}" alt="image" style="max-width:100px; height:auto;"></td>
-                <td>{item['item_no']}</td>
-                <td>{item['description']}</td>
-                <td style="text-align:center;">{quantity_in_order}</td>
-                <td style="text-align:right;">{unit_price:.2f}$<br>
-                    ({unit_price_byn:.2f} BYN / {unit_price_rub:.2f} RUB)
-                </td>
-                <td style="text-align:right;">{total_price_item:.2f}$<br>
-                    ({total_byn_item:.2f} BYN / {total_rub_item:.2f} RUB)
-                </td>
-            </tr>
-        """
+    <tr>
+        <td><img src="{item['url']}" alt="image"></td>
+        <td>{item['item_no']}</td>
+        <td>{item['description']}</td>
+        <td style="text-align:center;">{quantity_in_order}</td>
+        <td style="text-align:right;">{unit_price_byn:.2f} BYN</td>
+        <td style="text-align:right;">{total_byn_item:.2f} BYN</td>
+    </tr>
+    """
 
     total_byn_str = f"{total_byn:.2f} BYN"
-    total_rub_str = f"{total_rub:.2f} RUB"
-    total_usd_str = f"{total_usd:.2f}$"
 
     html_content += f"""
-            </tbody>
-        </table>
-        <div class="total">
-            Итог:
-            {total_usd_str} / {total_byn_str} / {total_rub_str}
-        </div>
+    </tbody>
+    </table>
+    <div class="total">
+        Итог: {total_byn_str}
+    </div>
     </body>
     </html>
     """
