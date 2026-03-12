@@ -653,8 +653,8 @@ def generate_order_pdf(order, order_details):
             background-color: #f9f9f9;
         }}
         img {{
-            width: 60px;
-            height: 60px;
+            width: 45px;
+            height: 45px;
             object-fit: contain; /* Чтобы изображение сохраняло пропорции внутри рамки */
             border: none;
         }}
@@ -689,7 +689,7 @@ def generate_order_pdf(order, order_details):
     <table>
     <thead>
     <tr>
-        <th>Изображение</th>
+        <th>Фото</th>
         <th>Id товара</th>
         <th>Описание</th>
         <th>Количество</th>
@@ -718,8 +718,8 @@ def generate_order_pdf(order, order_details):
         <td>{item['item_no']}</td>
         <td>{item['description']}</td>
         <td style="text-align:center;">{quantity_in_order}</td>
-        <td style="text-align:right;">{unit_price_byn:.2f} BYN</td>
-        <td style="text-align:right;">{total_byn_item:.2f} BYN</td>
+        <td style="text-align:right;">{unit_price_byn:.2f}</td>
+        <td style="text-align:right;">{total_byn_item:.2f}</td>
     </tr>
     """
 
