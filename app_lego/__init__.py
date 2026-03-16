@@ -662,7 +662,7 @@ def generate_order_pdf(order, order_details):
             font-family: "Arial Black", Gadget, sans-serif;
             font-size: 16px; /* Меньше общего текста суммы */
             font-weight: bold;
-            color: #C70039;
+            color: #000;
             text-align: right;
             margin-top: 20px;
         }}
@@ -690,7 +690,7 @@ def generate_order_pdf(order, order_details):
     <thead>
     <tr>
         <th>Фото</th>
-        <th>Id товара</th>
+        <th>Номер детали</th>
         <th>Описание</th>
         <th>Количество</th>
         <th>Цена за 1 шт. (BYN)</th>
@@ -717,9 +717,9 @@ def generate_order_pdf(order, order_details):
         <td><img src="{item['url']}" alt="image"></td>
         <td>{item['item_no']}</td>
         <td>{item['description']}</td>
-        <td style="text-align:center;">{quantity_in_order}</td>
+        <td style="text-align:center; font-weight: bold;">{quantity_in_order}</td>
         <td style="text-align:right;">{unit_price_byn:.2f}</td>
-        <td style="text-align:right;">{total_byn_item:.2f}</td>
+        <td style="text-align:right; font-weight: bold;">{total_byn_item:.2f}</td>
     </tr>
     """
 
