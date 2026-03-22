@@ -442,6 +442,7 @@ def get_catalog():
 import io
 from flask import request, jsonify, send_file
 from weasyprint import HTML, CSS
+import math
 
 def get_setting_value(setting_name):
     setting = Settings.query.filter_by(settings_name=setting_name).first()
@@ -700,14 +701,43 @@ def generate_order_pdf(order, order_details):
     <tbody>
     """
 
+    # for item in order_details:
+    #     total_price_item = item['total_price'] * multipl_coefficient
+    #     quantity_in_order = item['quantity_in_order']
+    #     unit_price = item['unit_price'] * multipl_coefficient
+
+    #     # Расчет цены в BYN
+    #     unit_price_byn = unit_price * byn_coefficient
+    #     total_byn_item = total_price_item * byn_coefficient
+
+    #     # Суммируем итоговую сумму в BYN
+    #     total_byn += total_byn_item
+
+    #     html_content += f"""
+    # <tr>
+    #     <td><img src="{item['url']}" alt="image"></td>
+    #     <td>{item['item_no']}</td>
+    #     <td>{item['description']}</td>
+    #     <td style="text-align:center; font-weight: bold;">{quantity_in_order}</td>
+    #     <td style="text-align:right;">{unit_price_byn:.2f}</td>
+    #     <td style="text-align:right; font-weight: bold;">{total_byn_item:.2f}</td>
+    # </tr>
+    # """
+
+    # total_byn_str = f"{total_byn:.2f} BYN"
+    
     for item in order_details:
         total_price_item = item['total_price'] * multipl_coefficient
         quantity_in_order = item['quantity_in_order']
         unit_price = item['unit_price'] * multipl_coefficient
 
-        # Расчет цены в BYN
-        unit_price_byn = unit_price * byn_coefficient
-        total_byn_item = total_price_item * byn_coefficient
+        # Расчет цены в BYN без округления
+        unit_price_byn_raw = unit_price * byn_coefficient
+        total_byn_item_raw = total_price_item * byn_coefficient
+
+        # Округление вверх до десятых
+        unit_price_byn = math.ceil(unit_price_byn_raw * 10) / 10
+        total_byn_item = math.ceil(total_byn_item_raw * 10) / 10
 
         # Суммируем итоговую сумму в BYN
         total_byn += total_byn_item
